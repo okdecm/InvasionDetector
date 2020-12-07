@@ -19,6 +19,10 @@ function Utility:NormalizeWho(who)
 	return normalizedWho;
 end
 
+function Utility:GetMeNormalized()
+	return Utility:NormalizeWho(UnitName("player"));
+end
+
 -- Convert seconds to readable format (YOINKED from NovaWorldBuffs)
 function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 	local timecalc = 0;
@@ -138,7 +142,7 @@ function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 	end
 end
 
-function Utility:TrySendGuildMessage(message)
+function Utility:TryNotifyGuild(message)
 	-- F- it ALWAYS send it
 	SendChatMessage(message, "GUILD");
 
