@@ -2,9 +2,10 @@
 ## Title: Invasion Detector
 ## Author: Dec Murphy (@OKDecM)
 ## Notes: Detect any invasion events and notify your guild
-## Version: 0.0.1
+## Version: 0.0.2
 ## SavedVariables: InvasionDetectorDB
 
 embeds.xml
 
+Utility.lua
 InvasionDetector.lua

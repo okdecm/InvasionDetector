@@ -3,27 +3,59 @@ local LibSerialize = LibStub("LibSerialize");
 InvasionDetector = {
 	["AddonMessagePrefix"] = "InvasionDetector",
 	["CheckSpeed"] = 5,
-	["DecayBuffer"] = 10,
 	["SpawnCooldown"] = 10800, -- 3 Hours
 	["SpawnWindow"] = 3600, -- 1 Hour
-	["HasAddon"] = {}
+	
+	["Me"] =  nil,
+	["CheckTicker"] = nil,
+	["HasAddon"] = {},
 };
 
 function InvasionDetector:Initialize()
-	if(not InvasionDetectorDB) then
+	local currentVersion = GetAddOnMetadata("InvasionDetector", "Version") or 0;
+
+	local isDatabaseOutdated = (not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
+
+	-- If we don't have a DB, or it's out of date, go ahead and (re-)create one
+	if(not InvasionDetectorDB or isDatabaseOutdated) then
+		if(not InvasionDetectorDB) then
+			print("[Invasion Detector] Setting up database for the first time");
+		else
+			print("[Invasion Detector] Setting up fresh database due to new version");
+		end
+
 		InvasionDetectorDB = {
-			["Invasions"] = {},
-			["LastCheck"] = nil
+			["Version"] = currentVersion,
+			["Invasions"] = {}
 		};
 	end
 
-	-- Register ourselves as having the addon (silly I know)
-	local me = UnitName("player") .. "-" .. GetNormalizedRealmName();
-	InvasionDetector.HasAddon[me] = true;
+	-- Specify our "who" in the context so we have a constant reference without having to re-evaluate
+	InvasionDetector.Me = Utility:NormalizeWho(UnitName("player"));
 
+	-- Register ourselves as having the addon (silly I know)
+	InvasionDetector.HasAddon[InvasionDetector.Me] = true;
+
+	-- Register our addon messages
 	C_ChatInfo.RegisterAddonMessagePrefix(InvasionDetector.AddonMessagePrefix);
 
-	C_Timer.NewTicker(
+	-- Start checking after 5 seconds
+	C_Timer.After(
+		5,
+		function()
+			InvasionDetector:StartChecking();
+		end
+	);
+end
+
+function InvasionDetector:StartChecking()
+	-- If a ticker is already running - cancel it
+	if(InvasionDetector.CheckTicker ~= nil) then
+		InvasionDetector.CheckTicker:Cancel();
+	end
+
+	-- Start the ticker
+	InvasionDetector.CheckTicker = C_Timer.NewTicker(
 		InvasionDetector.CheckSpeed,
 		function()
 			InvasionDetector:CheckForInvasions();
@@ -40,6 +72,7 @@ function InvasionDetector:CheckForInvasions()
 	-- Map ID for Azeroth
 	local mapID = 947;
 
+	-- Get all our points of interest on the map
 	local pointsOfInterest = C_AreaPoiInfo.GetAreaPOIForMap(947);
 	
 	for _, pointOfInterest in ipairs(pointsOfInterest) do
@@ -48,58 +81,87 @@ function InvasionDetector:CheckForInvasions()
 		-- Invasion found!
 		if(pointOfInterestInfo.textureIndex == 41) then
 			local invasionName = pointOfInterestInfo.description;
+			print("INVASION FOUND! " .. invasionName);
 
-			print("invasionName " .. invasionName);
+			-- Make sure we have the structure to store info about this invasion
+			InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
+				["Spawned"] = nil,
+				["LastSeen"] = nil
+			};
 
 			-- Get our last seen time
-			local lastSeen = InvasionDetectorDB.Invasions[invasionName];
+			local lastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
 			local timeDifference = (checkTime - (lastSeen or 0));
-
-			if(timeDifference > 10) then
-				print("TIME DIFFERENCE " .. timeDifference);
-				print("minimumSpawnTime " .. minimumSpawnTime);
-			end
 
 			-- If we've not seen this invasion before or it was last seen as long ago as our decay buffer - it's a new spawn!
 			if(not lastSeen or timeDifference >= minimumSpawnTime) then
-				print("IS TRYING TO NOTIFY GUILD ABOUT " .. invasionName);
-				-- Check if nobody has already notified in the guild chat
-				InvasionDetector:TrySendGuildMessage("Invasion up! Spotted in " .. invasionName);
+				-- Note down when it spawned
+				InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
+
+				-- Try and notify in the guild chat
+				Utility:TrySendGuildMessage("Invasion up! Spotted in " .. invasionName);
 			end
 
 			-- Store the time we saw it
-			InvasionDetectorDB.Invasions[invasionName] = checkTime;
+			InvasionDetectorDB.Invasions[invasionName].LastSeen = checkTime;
+		end
+	end
+
+	-- Check our history for any de-spawns
+	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
+		local spawned = invasionInfo.Spawned;
+		local lastSeen = invasionInfo.LastSeen;
+
+		-- If it was last seen in the past, check if it's despawned
+		if(lastSeen < checkTime and lastSeen > (checkTime - (InvasionDetector.CheckSpeed * 2))) then
+			-- Try and notify in the guild chat
+			Utility:TrySendGuildMessage("Invasion has ended in " .. invasionName);
 		end
 	end
 
 	InvasionDetectorDB.LastCheck = checkTime;
 end
 
-function InvasionDetector:TrySendGuildMessage(message)
-	SendChatMessage("[Invasion Detector] " .. message, "GUILD");
-	-- local onlineMembers = {};
+function InvasionDetector:RequestSync()
+	print("IS REQUESTING SYNC FROM GUILD");
 
-	-- local numTotalMembers = GetNumGuildMembers();
+	InvasionDetector:SendAddonMessage("SYNC_REQUEST", nil, "GUILD");
+end
 
-	-- for i = 1, numTotalMembers do
-	-- 	local name, _, _, _, _, _, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
+function InvasionDetector:SendSync(target, shouldCounterSync)
+	print("IS SENDING SYNC TO " .. target);
 
-	-- 	if (name and online and InvasionDetector.HasAddon[name] and not isMobile) then
-	-- 		--If guild member is online and has addon installed add to temp table.
-	-- 		onlineMembers[name] = true;
-	-- 	end
-	-- end
+	local response = {
+		["Version"] = InvasionDetectorDB.Version,
+		["Invasions"] = InvasionDetectorDB.Invasions,
+		["ShouldCounterSync"] = shouldCounterSync
+	};
 
-	-- local me = UnitName("player") .. "-" .. GetNormalizedRealmName();
+	InvasionDetector:SendAddonMessage("SYNC", response, "WHISPER", target);
+end
 
-	-- --Check temp table to see if we're first in alphabetical order.
-	-- for k, v in pairs(onlineMembers) do
-	-- 	if (k == me) then
-	-- 		SendChatMessage("[Invasion Detector] " .. message, "GUILD");
-	-- 	end
+function InvasionDetector:Sync(version, invasions, shouldCounterSync)
+	if(not version or version < InvasionDetectorDB.Version) then
+		print("[Invasion Detector] Unable to sync - other user has out of date addon");
+	elseif (version > InvasionDetectorDB.Version) then
+		print("[Invasion Detector] Unable to sync - your addon is out of date");
+	else
+		for invasionName, invasionInfo in pairs(invasions) do
+			local lastSeen = invasionInfo.lastSeen;
+			local myLastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
 
-	-- 	return;
-	-- end
+			-- Only overwrite newer "last seen" data (in the case one hadn't spawned when the user was online but had for another user)
+			if(not myLastSeen or lastSeen > myLastSeen) then
+				InvasionDetectorDB.Invasions[invasionName] = invasionInfo;
+			end
+		end
+
+		-- Send our data back to the sendee just so they can fill in any gaps also
+		if(shouldCounterSync) then
+			-- We've just synced from them, so they shouldn't try and sync back again
+			InvasionDetector:SendSync(sender, false);
+		end
+	end
 end
 
 function InvasionDetector:SendAddonMessage(type, body, chatType, target)
@@ -111,187 +173,32 @@ function InvasionDetector:SendAddonMessage(type, body, chatType, target)
 	C_ChatInfo.SendAddonMessage(InvasionDetector.AddonMessagePrefix, LibSerialize:Serialize(payload), chatType, target);
 end
 
-function InvasionDetector:RequestSync()
-	print("IS REQUESTING SYNC");
-
-	InvasionDetector:SendAddonMessage("SYNC_REQUEST", nil, "GUILD");
-end
-
-function InvasionDetector:SendSync(target)
-	print("IS SENDING SYNC");
-
-	local response = {
-		["Invasions"] = InvasionDetectorDB.Invasions
-	};
-
-	InvasionDetector:SendAddonMessage("SYNC", response, "WHISPER", target);
-end
-
 function InvasionDetector:RecieveAddonMessage(text, channel, sender, target)
-	local me = UnitName("player") .. "-" .. GetNormalizedRealmName();
-
 	local success, payload = LibSerialize:Deserialize(text);
 
 	print("HAS GOT " .. payload.Type .. " MESSAGE FROM " .. sender .. " TO " .. target);
 
-	-- If we ever recieve a message from someone else relating to this addon, note that down
-	if(channel == "GUILD") then
-		-- YOINKED from NovaWorldBuffs (ty King)
-		local normalizedWho = string.gsub(sender, " ", "");
-		normalizedWho = string.gsub(normalizedWho, "'", "");
-
-		if (not string.match(normalizedWho, "-")) then
-			--Sometimes it comes through without realm in classic?
-			normalizedWho = normalizedWho .. "-" .. GetNormalizedRealmName();
-		end
-
-		InvasionDetector.HasAddon[normalizedWho] = true;
-	end
+	-- If we ever recieve a message relating to this addon, note that down
+	InvasionDetector.HasAddon[Utility:NormalizeWho(sender)] = true;
 
 	if(success) then
 		if(payload.Type == "SYNC_REQUEST") then
-			if(sender ~= me) then
+			-- Don't bother syncing with yourself dummy
+			if(sender ~= InvasionDetector.Me) then
 				if(InvasionDetectorDB.LastCheck ~= nil) then
-					InvasionDetector:SendSync(sender);
+					InvasionDetector:SendSync(sender, true);
 				end
 			end
 		elseif (payload.Type == "SYNC") then
 			if(payload.Body) then
 				-- Somebody has sent use their invasion data, try and update ours if we can
+				local version = payload.Body.Version;
 				local invasions = payload.Body.Invasions;
+				local shouldCounterSync = payload.Body.shouldCounterSync;
 
-				for invasionName, lastSeen in pairs(invasions) do
-					local myLastSeen = InvasionDetectorDB.Invasions[invasionName];
-
-					-- Only overwrite newer "last seen" data (in the case one hadn't spawned when the user was online but had for another user)
-					if(not myLastSeen or lastSeen > myLastSeen) then
-						InvasionDetectorDB.Invasions[invasionName] = lastSeen;
-					end
-				end
-
-				-- Send our data back to the sendee just so they can fill in any gaps also
-				InvasionDetector:SendSync(sender);
+				InvasionDetector:Sync(version, invasions, shouldCounterSync);
 			end
 		end
-	end
-end
-
---Convert seconds to a readable format.
-function InvasionDetector:ConvertSecondsToFormat(seconds, countOnly, type, space)
-	local timecalc = 0;
-	if (countOnly) then
-		timecalc = seconds;
-	else
-		timecalc = seconds - time();
-	end
-	local d = math.floor((timecalc % (86400*365)) / 86400);
-	local h = math.floor((timecalc % 86400) / 3600);
-	local m = math.floor((timecalc % 3600) / 60);
-	local s = math.floor((timecalc % 60));
-	if (space or LOCALE_koKR or LOCALE_zhCN or LOCALE_zhTW) then
-		space = " ";
-	else
-		space = "";
-	end
-	if (type == "short") then
-		if (d == 1 and h == 0) then
-			return d .. "d";
-		elseif (d == 1) then
-			return d .. "d" .. space .. h .. "h";
-		end
-		if (d > 1 and h == 0) then
-			return d .. "d";
-		elseif (d > 1) then
-			return d .. "d" .. space .. h .. "h";
-		end
-		if (h == 1 and m == 0) then
-			return h .. "h";
-		elseif (h == 1) then
-			return h .. "h" .. space .. m .. "m";
-		end
-		if (h > 1 and m == 0) then
-			return h .. "h";
-		elseif (h > 1) then
-			return h .. "h" .. space .. m .. "m";
-		end
-		if (m == 1 and s == 0) then
-			return m .. "m";
-		elseif (m == 1) then
-			return m .. "m" .. space .. s .. "s";
-		end
-		if (m > 1 and s == 0) then
-			return m .. "m";
-		elseif (m > 1) then
-			return m .. "m" .. space .. s .. "s";
-		end
-		--If no matches it must be seconds only.
-		return s .. "s";
-	elseif (type == "medium") then
-		if (d == 1 and h == 0) then
-			return d .. " " .. L["dayMedium"];
-		elseif (d == 1) then
-			return d .. " " .. L["dayMedium"] .. " " .. h .. " " .. L["hoursMedium"];
-		end
-		if (d > 1 and h == 0) then
-			return d .. " " .. L["daysMedium"];
-		elseif (d > 1) then
-			return d .. " " .. L["daysMedium"] .. " " .. h .. " " .. L["hoursMedium"];
-		end
-		if (h == 1 and m == 0) then
-			return h .. " " .. L["hourMedium"];
-		elseif (h == 1) then
-			return h .. " " .. L["hourMedium"] .. " " .. m .. " " .. L["minutesMedium"];
-		end
-		if (h > 1 and m == 0) then
-			return h .. " " .. L["hoursMedium"];
-		elseif (h > 1) then
-			return h .. " " .. L["hoursMedium"] .. " " .. m .. " " .. L["minutesMedium"];
-		end
-		if (m == 1 and s == 0) then
-			return m .. " " .. L["minuteMedium"];
-		elseif (m == 1) then
-			return m .. " " .. L["minuteMedium"] .. " " .. s .. " " .. L["secondsMedium"];
-		end
-		if (m > 1 and s == 0) then
-			return m .. " " .. L["minutesMedium"];
-		elseif (m > 1) then
-			return m .. " " .. L["minutesMedium"] .. " " .. s .. " " .. L["secondsMedium"];
-		end
-		--If no matches it must be seconds only.
-		return s .. " " .. L["secondsMedium"];
-	else
-		if (d == 1 and h == 0) then
-			return d .. " " .. "day";
-		elseif (d == 1) then
-			return d .. " " .. "day" .. " " .. h .. " " .. "hours";
-		end
-		if (d > 1 and h == 0) then
-			return d .. " " .. "days";
-		elseif (d > 1) then
-			return d .. " " .. "days" .. " " .. h .. " " .. "hours";
-		end
-		if (h == 1 and m == 0) then
-			return h .. " " .. "hour";
-		elseif (h == 1) then
-			return h .. " " .. "hour" .. " " .. m .. " " .. "minutes";
-		end
-		if (h > 1 and m == 0) then
-			return h .. " " .. "hours";
-		elseif (h > 1) then
-			return h .. " " .. "hours" .. " " .. m .. " " .. "minutes";
-		end
-		if (m == 1 and s == 0) then
-			return m .. " " .. "minute";
-		elseif (m == 1) then
-			return m .. " " .. "minute" .. " " .. s .. " " .. "seconds";
-		end
-		if (m > 1 and s == 0) then
-			return m .. " " .. "minutes";
-		elseif (m > 1) then
-			return m .. " " .. "minutes" .. " " .. s .. " " .. "seconds";
-		end
-		--If no matches it must be seconds only.
-		return s .. " " .. "seconds";
 	end
 end
 
@@ -307,18 +214,21 @@ frame:SetScript(
 		if(event == "ADDON_LOADED") then
 			local addonName = ...;
 
+			-- If the addon is loading, initialize everything
 			if(addonName == "InvasionDetector") then
 				InvasionDetector:Initialize();
 			end
 		elseif (event == "PLAYER_ENTERING_WORLD") then
 			local isInitialLogin, isReloadingUI = ...;
 
-			if(isInitialLogin or isReloadingUI) then
+			-- Only request a sync on initial login
+			if(isInitialLogin) then
 				InvasionDetector:RequestSync();
 			end
 		elseif (event == "CHAT_MSG_ADDON") then
 			local prefix, text, channel, sender, target = ...;
 
+			-- If it's a message for our addon, pass it over to the
 			if(prefix == InvasionDetector.AddonMessagePrefix) then
 				InvasionDetector:RecieveAddonMessage(text, channel, sender, target);
 			end
@@ -334,11 +244,14 @@ SlashCmdList["INVASTIONDETECTOR"] = function(...)
 
 	local maximumSpawnTime = (InvasionDetector.SpawnCooldown + InvasionDetector.SpawnWindow);
 
-	for invasionName, lastSeen in pairs(InvasionDetectorDB.Invasions) do
+	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
+		local spawned = invasionInfo.Spawned;
+		local lastSeen = invasionInfo.LastSeen;
+
 		local timeDifference = (serverTime - lastSeen);
 
 		-- Invasion is NOT active (wasn't seen recently)
-		if(timeDifference > InvasionDetector.DecayBuffer) then
+		if(timeDifference > (InvasionDetector.CheckSpeed * 2)) then
 			local endOfSpawnWindow = (lastSeen + maximumSpawnTime);
 
 			-- if our invasion is out of the bounds of the spawn time and is NOT active, it's a lost child (has since changed states when offline with no updates from guildies)
@@ -349,15 +262,17 @@ SlashCmdList["INVASTIONDETECTOR"] = function(...)
 
 				-- Invasion is ON cooldown
 				if(remainingTimeOnCooldown < 0) then
-					print(invasionName .. " invasion is ON cooldown. Cooldown ends in " .. InvasionDetector:ConvertSecondsToFormat(-remainingTimeOnCooldown, true));
+					print(invasionName .. " invasion is ON cooldown. Cooldown ends in " .. Utility:ConvertSecondsToFormat(-remainingTimeOnCooldown, true));
 				else
 					local remainingTimeInWindow = (InvasionDetector.SpawnWindow - remainingTimeOnCooldown);
 
-					print(invasionName .. " invasion is off cooldown. Remaining time in window is " .. InvasionDetector:ConvertSecondsToFormat(remainingTimeInWindow, true));
+					print(invasionName .. " invasion is off cooldown. Remaining time in window is " .. Utility:ConvertSecondsToFormat(remainingTimeInWindow, true));
 				end
 			end
 		else
-			print(invasionName .. " invasion is ACTIVE!");
+			local spawnedSecondsAgo = (serverTime - spawned);
+
+			print(invasionName .. " invasion is ACTIVE! Spawned " .. Utility:ConvertSecondsToFormat(spawnedSecondsAgo, true) .. " ago");
 		end
 	end
 end
