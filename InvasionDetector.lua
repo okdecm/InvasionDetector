@@ -81,7 +81,6 @@ function InvasionDetector:CheckForInvasions()
 		-- Invasion found!
 		if(pointOfInterestInfo.textureIndex == 41) then
 			local invasionName = pointOfInterestInfo.description;
-			print("INVASION FOUND! " .. invasionName);
 
 			-- Make sure we have the structure to store info about this invasion
 			InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
