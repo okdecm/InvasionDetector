@@ -98,7 +98,7 @@ function InvasionDetector:CheckForInvasions()
 				InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
 
 				-- Try and notify in the guild chat
-				Utility:TrySendGuildMessage("Invasion up! Spotted in " .. invasionName);
+				Utility:TrySendGuildMessage("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
 			end
 
 			-- Store the time we saw it
@@ -114,7 +114,7 @@ function InvasionDetector:CheckForInvasions()
 		-- If it was last seen in the past, check if it's despawned
 		if(lastSeen < checkTime and lastSeen > (checkTime - (InvasionDetector.CheckSpeed * 2))) then
 			-- Try and notify in the guild chat
-			Utility:TrySendGuildMessage("Invasion has ended in " .. invasionName);
+			Utility:TrySendGuildMessage("[Invasion Detector] Invasion has ended in " .. invasionName);
 		end
 	end
 
@@ -122,13 +122,13 @@ function InvasionDetector:CheckForInvasions()
 end
 
 function InvasionDetector:RequestSync()
-	print("IS REQUESTING SYNC FROM GUILD");
+	print("[Invasion Detector] IS REQUESTING SYNC FROM GUILD");
 
 	InvasionDetector:SendAddonMessage("SYNC_REQUEST", nil, "GUILD");
 end
 
 function InvasionDetector:SendSync(target, shouldCounterSync)
-	print("IS SENDING SYNC TO " .. target);
+	print("[Invasion Detector] IS SENDING SYNC TO " .. target);
 
 	local response = {
 		["Version"] = InvasionDetectorDB.Version,
@@ -175,7 +175,7 @@ end
 function InvasionDetector:RecieveAddonMessage(text, channel, sender, target)
 	local success, payload = LibSerialize:Deserialize(text);
 
-	print("HAS GOT " .. payload.Type .. " MESSAGE FROM " .. sender .. " TO " .. target);
+	-- print("[Invasion Detector] HAS GOT " .. payload.Type .. " MESSAGE FROM " .. sender .. " TO " .. target);
 
 	-- If we ever recieve a message relating to this addon, note that down
 	InvasionDetector.HasAddon[Utility:NormalizeWho(sender)] = true;
