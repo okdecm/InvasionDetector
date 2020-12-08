@@ -1,7 +1,9 @@
 local LibSerialize = LibStub("LibSerialize");
+local LibDeflate = LibStub("LibDeflate");
+local AceComm = LibStub("AceComm-3.0");
 
 InvasionDetector = {
-	["AddonMessagePrefix"] = "InvasionDetector",
+	["CommPrefix"] = "InvasionDetector",
 	["CheckSpeed"] = 5,
 	["SpawnCooldown"] = 10800, -- 3 Hours
 	["SpawnWindow"] = 3600, -- 1 Hour
@@ -12,10 +14,6 @@ InvasionDetector = {
 
 function InvasionDetector:Initialize()
 	local currentVersion = GetAddOnMetadata("InvasionDetector", "Version") or 0;
-
-	if(InvasionDetectorDB.Version) then
-		-- print("InvasionDetectorDB.Version " .. InvasionDetectorDB.Version);
-	end
 
 	local isDatabaseOutdated = (not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
 
@@ -39,12 +37,17 @@ function InvasionDetector:Initialize()
 	InvasionDetector.HasAddon[meNormalized] = true;
 
 	-- Register our addon messages
-	C_ChatInfo.RegisterAddonMessagePrefix(InvasionDetector.AddonMessagePrefix);
+	AceComm:RegisterComm(
+		InvasionDetector.CommPrefix,
+		function(...)
+			return InvasionDetector:RecieveCommMessage(...);
+		end
+	);
 end
 
 function InvasionDetector:StartChecking()
 	local inInstance = IsInInstance();
-	
+
 	-- If a ticker is already running - cancel it
 	if(InvasionDetector.CheckTicker ~= nil) then
 		InvasionDetector.CheckTicker:Cancel();
@@ -107,7 +110,7 @@ function InvasionDetector:CheckForInvasions()
 					InvasionDetectorDB.Invasions[invasionName].Despawned = nil;
 
 					-- Try and notify in the guild chat
-					Utility:TryNotifyGuild("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+					Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion up! Spotted in " .. invasionName);
 				end
 
 				-- Store the time we saw it
@@ -136,7 +139,7 @@ function InvasionDetector:CheckForInvasions()
 				invasionInfo.Despawned = checkTime;
 
 				-- Try and notify in the guild chat
-				Utility:TryNotifyGuild("[Invasion Detector] Invasion has ended in " .. invasionName);
+				Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion has ended in " .. invasionName);
 			end
 		end
 	end
@@ -147,7 +150,7 @@ end
 function InvasionDetector:RequestSync()
 	print("[Invasion Detector] IS REQUESTING SYNC FROM GUILD");
 
-	InvasionDetector:SendAddonMessage("SYNC_REQUEST", nil, "GUILD");
+	InvasionDetector:SendCommMessage("SYNC_REQUEST", nil, "GUILD");
 end
 
 function InvasionDetector:SendSync(target, shouldCounterSync)
@@ -159,7 +162,7 @@ function InvasionDetector:SendSync(target, shouldCounterSync)
 		["ShouldCounterSync"] = shouldCounterSync
 	};
 
-	InvasionDetector:SendAddonMessage("SYNC", response, "WHISPER", target);
+	InvasionDetector:SendCommMessage("SYNC", response, "WHISPER", target);
 end
 
 function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
@@ -168,6 +171,8 @@ function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
 	elseif (version > InvasionDetectorDB.Version) then
 		print("[Invasion Detector] Unable to sync - your addon is out of date");
 	else
+		print("[Invasion Detector] IS SYNCING WITH DATA FROM " .. sender);
+
 		for invasionName, invasionInfo in pairs(invasions) do
 			local lastSeen = invasionInfo.LastSeen;
 			local myInvasionInfo = InvasionDetectorDB.Invasions[invasionName];
@@ -186,88 +191,86 @@ function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
 	end
 end
 
-function InvasionDetector:SendAddonMessage(type, body, chatType, target)
-	local payload = {
+function InvasionDetector:SendCommMessage(type, body, chatType, target)
+	local data = {
 		["Type"] = type,
 		["Body"] = body
 	};
 
-	C_ChatInfo.SendAddonMessage(InvasionDetector.AddonMessagePrefix, LibSerialize:Serialize(payload), chatType, target);
+	local serialized = LibSerialize:Serialize(data);
+	local compressed = LibDeflate:CompressDeflate(serialized, {level = 9});
+	local encoded = LibDeflate:EncodeForWoWAddonChannel(compressed);
+
+	AceComm:SendCommMessage(InvasionDetector.CommPrefix, encoded, chatType, target);
 end
 
-function InvasionDetector:RecieveAddonMessage(text, channel, sender, target)
+function InvasionDetector:RecieveCommMessage(prefix, payload, channel, sender)
+	if(prefix ~= InvasionDetector.CommPrefix) then
+		return;
+	end
+
+	local decoded = LibDeflate:DecodeForWoWAddonChannel(payload);
+
+	if (not decoded) then
+		print("[Invastion Detector] Failed to decode payload");
+
+		return;
+	end
+
+	local decompressed = LibDeflate:DecompressDeflate(decoded);
+
+	if (not decompressed) then
+		print("[Invastion Detector] Failed to decompress payload");
+
+		return;
+	end
+
+	local success, data = LibSerialize:Deserialize(decompressed);
+
+	if (not success) then
+		print("[Invastion Detector] Failed to deserialize payload");
+
+		return;
+	end
+
 	local meNormalized = Utility:GetMeNormalized();
+	local senderNormalized = Utility:NormalizeWho(sender);
 
-	local success, payload = LibSerialize:Deserialize(text);
-
-	-- print("[Invasion Detector] HAS GOT " .. payload.Type .. " MESSAGE FROM " .. sender .. " TO " .. target);
+	-- print("[Invasion Detector] HAS GOT " .. data.Type .. " MESSAGE FROM " .. senderNormalized);
 
 	-- If we ever recieve a message relating to this addon, note that down
-	InvasionDetector.HasAddon[Utility:NormalizeWho(sender)] = true;
+	InvasionDetector.HasAddon[senderNormalized] = true;
 
-	if(success) then
-		if(payload.Type == "SYNC_REQUEST") then
-			-- Don't bother syncing with yourself dummy
-			if(sender ~= meNormalized) then
-				if(InvasionDetectorDB.LastCheck ~= nil) then
-					InvasionDetector:SendSync(sender, true);
-				end
+	if(data.Type == "SYNC_REQUEST") then
+		-- Don't bother syncing with yourself dummy
+		if(senderNormalized ~= meNormalized) then
+			if(InvasionDetectorDB.LastCheck ~= nil) then
+				InvasionDetector:SendSync(senderNormalized, true);
 			end
-		elseif (payload.Type == "SYNC") then
-			if(payload.Body) then
-				-- Somebody has sent use their invasion data, try and update ours if we can
-				local version = payload.Body.Version;
-				local invasions = payload.Body.Invasions;
-				local shouldCounterSync = payload.Body.shouldCounterSync;
+		end
+	elseif (data.Type == "SYNC") then
+		if(data.Body) then
+			-- Somebody has sent use their invasion data, try and update ours if we can
+			local version = data.Body.Version;
+			local invasions = data.Body.Invasions;
+			local shouldCounterSync = data.Body.ShouldCounterSync;
 
-				InvasionDetector:Sync(sender, version, invasions, shouldCounterSync);
-			end
+			InvasionDetector:Sync(senderNormalized, version, invasions, shouldCounterSync);
 		end
 	end
 end
 
-local frame = CreateFrame("Frame", "InvasionDetectorFrame");
+function InvasionDetector:RecieveGuildMessage(text)
+	text = string.lower(text);
 
-frame:RegisterEvent("ADDON_LOADED");
-frame:RegisterEvent("PLAYER_ENTERING_WORLD");
-frame:RegisterEvent("CHAT_MSG_ADDON");
+	local command, arg = strsplit(" ", text, 2);
 
-frame:SetScript(
-	"OnEvent",
-	function(frame, event, ...)
-		if(event == "ADDON_LOADED") then
-			local addonName = ...;
-
-			-- If the addon is loading, initialize everything
-			if(addonName == "InvasionDetector") then
-				InvasionDetector:Initialize();
-			end
-		elseif (event == "PLAYER_ENTERING_WORLD") then
-			-- Re sync our database if possible (e.g. when leaving an instance and we want fresh timers)
-			InvasionDetector:RequestSync();
-
-			-- Start checking after 5 seconds
-			C_Timer.After(
-				5,
-				function()
-					InvasionDetector:StartChecking();
-				end
-			);
-		elseif (event == "CHAT_MSG_ADDON") then
-			local prefix, text, channel, sender, target = ...;
-
-			-- If it's a message for our addon, pass it over to the
-			if(prefix == InvasionDetector.AddonMessagePrefix) then
-				InvasionDetector:RecieveAddonMessage(text, channel, sender, target);
-			end
-		end
+	if(string.match(command, "^!id")) then
+		InvasionDetector:OutputTimers("guild");
 	end
-);
+end
 
-SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
-SLASH_INVASTIONDETECTOR2 = "/id";
-
-SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
+function InvasionDetector:OutputTimers(chatType)
 	local serverTime = GetServerTime();
 
 	local messages = {};
@@ -312,10 +315,52 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 	end
 
 	for _, message in ipairs(messages) do
-		if(argumentsString == "guild") then
-			SendChatMessage("[Invasion Detector] " .. message, "GUILD");
+		if(chatType == "guild") then
+			Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] " .. message, "GUILD");
 		else
 			print("[Invasion Detector] " .. message);
 		end
 	end
+end
+
+local frame = CreateFrame("Frame", "InvasionDetectorFrame");
+
+frame:RegisterEvent("ADDON_LOADED");
+frame:RegisterEvent("PLAYER_ENTERING_WORLD");
+frame:RegisterEvent("CHAT_MSG_GUILD");
+
+frame:SetScript(
+	"OnEvent",
+	function(frame, event, ...)
+		if(event == "ADDON_LOADED") then
+			local addonName = ...;
+
+			-- If the addon is loading, initialize everything
+			if(addonName == "InvasionDetector") then
+				InvasionDetector:Initialize();
+			end
+		elseif(event == "PLAYER_ENTERING_WORLD") then
+			-- Re sync our database if possible (e.g. when leaving an instance and we want fresh timers)
+			InvasionDetector:RequestSync();
+
+			-- Start checking after 5 seconds
+			C_Timer.After(
+				5,
+				function()
+					InvasionDetector:StartChecking();
+				end
+			);
+		elseif(event == "CHAT_MSG_GUILD") then
+			local text = ...;
+
+			InvasionDetector:RecieveGuildMessage(text);
+		end
+	end
+);
+
+SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
+SLASH_INVASTIONDETECTOR2 = "/id";
+
+SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
+	InvasionDetector:OutputTimers(argumentsString);
 end
