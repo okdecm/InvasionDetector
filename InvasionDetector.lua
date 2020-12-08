@@ -1,7 +1,9 @@
 local LibSerialize = LibStub("LibSerialize");
+local LibDeflate = LibStub("LibDeflate");
+local AceComm = LibStub("AceComm-3.0");
 
 InvasionDetector = {
-	["AddonMessagePrefix"] = "InvasionDetector",
+	["CommPrefix"] = "InvasionDetector",
 	["CheckSpeed"] = 5,
 	["SpawnCooldown"] = 10800, -- 3 Hours
 	["SpawnWindow"] = 3600, -- 1 Hour
@@ -12,10 +14,6 @@ InvasionDetector = {
 
 function InvasionDetector:Initialize()
 	local currentVersion = GetAddOnMetadata("InvasionDetector", "Version") or 0;
-
-	if(InvasionDetectorDB.Version) then
-		print("InvasionDetectorDB.Version " .. InvasionDetectorDB.Version);
-	end
 
 	local isDatabaseOutdated = (not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
 
@@ -39,84 +37,110 @@ function InvasionDetector:Initialize()
 	InvasionDetector.HasAddon[meNormalized] = true;
 
 	-- Register our addon messages
-	C_ChatInfo.RegisterAddonMessagePrefix(InvasionDetector.AddonMessagePrefix);
-
-	-- Start checking after 5 seconds
-	C_Timer.After(
-		5,
-		function()
-			InvasionDetector:StartChecking();
+	AceComm:RegisterComm(
+		InvasionDetector.CommPrefix,
+		function(...)
+			return InvasionDetector:RecieveCommMessage(...);
 		end
 	);
 end
 
 function InvasionDetector:StartChecking()
+	local inInstance = IsInInstance();
+
 	-- If a ticker is already running - cancel it
 	if(InvasionDetector.CheckTicker ~= nil) then
 		InvasionDetector.CheckTicker:Cancel();
 	end
 
-	-- Start the ticker
-	InvasionDetector.CheckTicker = C_Timer.NewTicker(
-		InvasionDetector.CheckSpeed,
-		function()
-			InvasionDetector:CheckForInvasions();
-		end
-	);
+	-- If we're in an instance, just run the checker once to flag any active invasions
+	if(inInstance) then
+		InvasionDetector:CheckForInvasions();
+	else
+		-- Start the ticker
+		InvasionDetector.CheckTicker = C_Timer.NewTicker(
+			InvasionDetector.CheckSpeed,
+			function()
+				InvasionDetector:CheckForInvasions();
+			end
+		);
+	end
 end
 
 function InvasionDetector:CheckForInvasions()
 	local checkTime = GetServerTime();
 
-	-- Our maximum spawn time
+	-- Get the instance status ourselves due to the possiblity of this callback being called whilst transitioning between instances
+	-- SEE: https://wow.gamepedia.com/API_C_Timer.NewTicker - Details area
+	local inInstance = IsInInstance();
+
 	local minimumSpawnTime = InvasionDetector.SpawnCooldown;
 
-	-- Map ID for Azeroth
-	local mapID = 947;
+	-- We can only scan for POI's when not in instances
+	if(not inInstance) then
+		-- Map ID for Azeroth
+		local mapID = 947;
 
-	-- Get all our points of interest on the map
-	local pointsOfInterest = C_AreaPoiInfo.GetAreaPOIForMap(947);
-	
-	for _, pointOfInterest in ipairs(pointsOfInterest) do
-		local pointOfInterestInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, pointOfInterest);
+		-- Get all our points of interest on the map
+		local pointsOfInterest = C_AreaPoiInfo.GetAreaPOIForMap(947);
+		
+		for _, pointOfInterest in ipairs(pointsOfInterest) do
+			local pointOfInterestInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, pointOfInterest);
 
-		-- Invasion found!
-		if(pointOfInterestInfo.textureIndex == 41) then
-			local invasionName = pointOfInterestInfo.description;
+			-- Invasion found!
+			if(pointOfInterestInfo.textureIndex == 41) then
+				local invasionName = pointOfInterestInfo.description;
 
-			-- Make sure we have the structure to store info about this invasion
-			InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
-				["Spawned"] = nil,
-				["LastSeen"] = nil
-			};
+				-- Make sure we have the structure to store info about this invasion
+				InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
+					["Spawned"] = nil,
+					["LastSeen"] = nil,
+					["HasEnteredInstance"] = nil,
+					["Despawned"] = nil
+				};
 
-			-- Get our last seen time
-			local lastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
-			local timeDifference = (checkTime - (lastSeen or 0));
+				-- Get our last seen time
+				local lastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
+				local timeDifference = (checkTime - (lastSeen or 0));
 
-			-- If we've not seen this invasion before or it was last seen as long ago as our decay buffer - it's a new spawn!
-			if(not lastSeen or timeDifference >= minimumSpawnTime) then
-				-- Note down when it spawned
-				InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
+				-- If we've not seen this invasion before or it was last seen as long ago as our decay buffer - it's a new spawn!
+				if(not lastSeen or timeDifference >= minimumSpawnTime) then
+					-- Note down when it spawned
+					InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
+					InvasionDetectorDB.Invasions[invasionName].Despawned = nil;
 
-				-- Try and notify in the guild chat
-				Utility:TryNotifyGuild("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+					-- Try and notify in the guild chat
+					Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+				end
+
+				-- Store the time we saw it
+				InvasionDetectorDB.Invasions[invasionName].LastSeen = checkTime;
+				-- Clear the instance flag
+				InvasionDetectorDB.Invasions[invasionName].HasEnteredInstance = false;
 			end
-
-			-- Store the time we saw it
-			InvasionDetectorDB.Invasions[invasionName].LastSeen = checkTime;
 		end
 	end
 
-	-- Check our history for any de-spawns
+	-- Check our history for any de-spawns, and tag any we lose track of due to entering instances
 	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
 		local spawned = invasionInfo.Spawned;
 		local lastSeen = invasionInfo.LastSeen;
+		local despanwed = invasionInfo.Despawned;
 
-		-- If it was last seen in the past, check if it's despawned
-		if(lastSeen < checkTime and lastSeen > (checkTime - (InvasionDetector.CheckSpeed * 2))) then
-			-- Try and notify in the guild chat
-			Utility:TryNotifyGuild("[Invasion Detector] Invasion has ended in " .. invasionName);
+		local timeDifference = (checkTime - lastSeen);
+
+		-- If it was last seen in the past, and it's still within the cooldown window, and it hasn't already been marked as despawned - it's a recent despawn
+		if(lastSeen < checkTime and (timeDifference < minimumSpawnTime) and not despanwed) then
+			-- If we've lost track of it due to entering an instance, note that down
+			if(inInstance) then
+				invasionInfo.HasEnteredInstance = true;
+			else
+				-- Note down when it despawned
+				invasionInfo.Despawned = checkTime;
+
+				-- Try and notify in the guild chat
+				Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion has ended in " .. invasionName);
+			end
 		end
 	end
 
@@ -126,7 +150,7 @@ end
 function InvasionDetector:RequestSync()
 	print("[Invasion Detector] IS REQUESTING SYNC FROM GUILD");
 
-	InvasionDetector:SendAddonMessage("SYNC_REQUEST", nil, "GUILD");
+	InvasionDetector:SendCommMessage("SYNC_REQUEST", nil, "GUILD");
 end
 
 function InvasionDetector:SendSync(target, shouldCounterSync)
@@ -138,7 +162,7 @@ function InvasionDetector:SendSync(target, shouldCounterSync)
 		["ShouldCounterSync"] = shouldCounterSync
 	};
 
-	InvasionDetector:SendAddonMessage("SYNC", response, "WHISPER", target);
+	InvasionDetector:SendCommMessage("SYNC", response, "WHISPER", target);
 end
 
 function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
@@ -147,6 +171,8 @@ function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
 	elseif (version > InvasionDetectorDB.Version) then
 		print("[Invasion Detector] Unable to sync - your addon is out of date");
 	else
+		print("[Invasion Detector] IS SYNCING WITH DATA FROM " .. sender);
+
 		for invasionName, invasionInfo in pairs(invasions) do
 			local lastSeen = invasionInfo.LastSeen;
 			local myInvasionInfo = InvasionDetectorDB.Invasions[invasionName];
@@ -165,42 +191,134 @@ function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
 	end
 end
 
-function InvasionDetector:SendAddonMessage(type, body, chatType, target)
-	local payload = {
+function InvasionDetector:SendCommMessage(type, body, chatType, target)
+	local data = {
 		["Type"] = type,
 		["Body"] = body
 	};
 
-	C_ChatInfo.SendAddonMessage(InvasionDetector.AddonMessagePrefix, LibSerialize:Serialize(payload), chatType, target);
+	local serialized = LibSerialize:Serialize(data);
+	local compressed = LibDeflate:CompressDeflate(serialized, {level = 9});
+	local encoded = LibDeflate:EncodeForWoWAddonChannel(compressed);
+
+	AceComm:SendCommMessage(InvasionDetector.CommPrefix, encoded, chatType, target);
 end
 
-function InvasionDetector:RecieveAddonMessage(text, channel, sender, target)
+function InvasionDetector:RecieveCommMessage(prefix, payload, channel, sender)
+	if(prefix ~= InvasionDetector.CommPrefix) then
+		return;
+	end
+
+	local decoded = LibDeflate:DecodeForWoWAddonChannel(payload);
+
+	if (not decoded) then
+		print("[Invastion Detector] Failed to decode payload");
+
+		return;
+	end
+
+	local decompressed = LibDeflate:DecompressDeflate(decoded);
+
+	if (not decompressed) then
+		print("[Invastion Detector] Failed to decompress payload");
+
+		return;
+	end
+
+	local success, data = LibSerialize:Deserialize(decompressed);
+
+	if (not success) then
+		print("[Invastion Detector] Failed to deserialize payload");
+
+		return;
+	end
+
 	local meNormalized = Utility:GetMeNormalized();
+	local senderNormalized = Utility:NormalizeWho(sender);
 
-	local success, payload = LibSerialize:Deserialize(text);
-
-	-- print("[Invasion Detector] HAS GOT " .. payload.Type .. " MESSAGE FROM " .. sender .. " TO " .. target);
+	-- print("[Invasion Detector] HAS GOT " .. data.Type .. " MESSAGE FROM " .. senderNormalized);
 
 	-- If we ever recieve a message relating to this addon, note that down
-	InvasionDetector.HasAddon[Utility:NormalizeWho(sender)] = true;
+	InvasionDetector.HasAddon[senderNormalized] = true;
 
-	if(success) then
-		if(payload.Type == "SYNC_REQUEST") then
-			-- Don't bother syncing with yourself dummy
-			if(sender ~= meNormalized) then
-				if(InvasionDetectorDB.LastCheck ~= nil) then
-					InvasionDetector:SendSync(sender, true);
+	if(data.Type == "SYNC_REQUEST") then
+		-- Don't bother syncing with yourself dummy
+		if(senderNormalized ~= meNormalized) then
+			if(InvasionDetectorDB.LastCheck ~= nil) then
+				InvasionDetector:SendSync(senderNormalized, true);
+			end
+		end
+	elseif (data.Type == "SYNC") then
+		if(data.Body) then
+			-- Somebody has sent use their invasion data, try and update ours if we can
+			local version = data.Body.Version;
+			local invasions = data.Body.Invasions;
+			local shouldCounterSync = data.Body.ShouldCounterSync;
+
+			InvasionDetector:Sync(senderNormalized, version, invasions, shouldCounterSync);
+		end
+	end
+end
+
+function InvasionDetector:RecieveGuildMessage(text)
+	text = string.lower(text);
+
+	local command, arg = strsplit(" ", text, 2);
+
+	if(string.match(command, "^!id")) then
+		InvasionDetector:OutputTimers("guild");
+	end
+end
+
+function InvasionDetector:OutputTimers(chatType)
+	local serverTime = GetServerTime();
+
+	local messages = {};
+
+	local maximumSpawnTime = (InvasionDetector.SpawnCooldown + InvasionDetector.SpawnWindow);
+
+	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
+		local spawned = invasionInfo.Spawned;
+		local lastSeen = invasionInfo.LastSeen;
+		local hasEnteredInstance = invasionInfo.HasEnteredInstance;
+
+		if(hasEnteredInstance) then
+			messages[#messages + 1] = invasionName .. " invasion lost its timer due to the player entering an instance";
+		else
+			local timeDifference = (serverTime - lastSeen);
+
+			-- Invasion is NOT active (wasn't seen recently)
+			if(timeDifference > (InvasionDetector.CheckSpeed * 2)) then
+				local endOfSpawnWindow = (lastSeen + maximumSpawnTime);
+
+				-- if our invasion is out of the bounds of the spawn time and is NOT active, it's a lost child (has since changed states when offline with no updates from guildies)
+				if(endOfSpawnWindow < serverTime) then
+					messages[#messages + 1] = invasionName .. " invasion has no reliable timer";
+				else
+					local remainingTimeOnCooldown = (serverTime - (lastSeen + InvasionDetector.SpawnCooldown));
+
+					-- Invasion is ON cooldown
+					if(remainingTimeOnCooldown < 0) then
+						messages[#messages + 1] = invasionName .. " invasion is ON cooldown. Cooldown ends in " .. Utility:ConvertSecondsToFormat(-remainingTimeOnCooldown, true);
+					else
+						local remainingTimeInWindow = (InvasionDetector.SpawnWindow - remainingTimeOnCooldown);
+
+						messages[#messages + 1] = invasionName .. " invasion is off cooldown. Remaining time in window is " .. Utility:ConvertSecondsToFormat(remainingTimeInWindow, true);
+					end
 				end
-			end
-		elseif (payload.Type == "SYNC") then
-			if(payload.Body) then
-				-- Somebody has sent use their invasion data, try and update ours if we can
-				local version = payload.Body.Version;
-				local invasions = payload.Body.Invasions;
-				local shouldCounterSync = payload.Body.shouldCounterSync;
+			else
+				local spawnedSecondsAgo = (serverTime - spawned);
 
-				InvasionDetector:Sync(sender, version, invasions, shouldCounterSync);
+				messages[#messages + 1] = invasionName .. " invasion is ACTIVE! Spawned " .. Utility:ConvertSecondsToFormat(spawnedSecondsAgo, true) .. " ago";
 			end
+		end
+	end
+
+	for _, message in ipairs(messages) do
+		if(chatType == "guild") then
+			Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] " .. message, "GUILD");
+		else
+			print("[Invasion Detector] " .. message);
 		end
 	end
 end
@@ -209,7 +327,7 @@ local frame = CreateFrame("Frame", "InvasionDetectorFrame");
 
 frame:RegisterEvent("ADDON_LOADED");
 frame:RegisterEvent("PLAYER_ENTERING_WORLD");
-frame:RegisterEvent("CHAT_MSG_ADDON");
+frame:RegisterEvent("CHAT_MSG_GUILD");
 
 frame:SetScript(
 	"OnEvent",
@@ -221,20 +339,21 @@ frame:SetScript(
 			if(addonName == "InvasionDetector") then
 				InvasionDetector:Initialize();
 			end
-		elseif (event == "PLAYER_ENTERING_WORLD") then
-			local isInitialLogin, isReloadingUI = ...;
+		elseif(event == "PLAYER_ENTERING_WORLD") then
+			-- Re sync our database if possible (e.g. when leaving an instance and we want fresh timers)
+			InvasionDetector:RequestSync();
 
-			-- Only request a sync on initial login
-			if(isInitialLogin or isReloadingUI) then
-				InvasionDetector:RequestSync();
-			end
-		elseif (event == "CHAT_MSG_ADDON") then
-			local prefix, text, channel, sender, target = ...;
+			-- Start checking after 5 seconds
+			C_Timer.After(
+				5,
+				function()
+					InvasionDetector:StartChecking();
+				end
+			);
+		elseif(event == "CHAT_MSG_GUILD") then
+			local text = ...;
 
-			-- If it's a message for our addon, pass it over to the
-			if(prefix == InvasionDetector.AddonMessagePrefix) then
-				InvasionDetector:RecieveAddonMessage(text, channel, sender, target);
-			end
+			InvasionDetector:RecieveGuildMessage(text);
 		end
 	end
 );
@@ -243,49 +362,5 @@ SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
 SLASH_INVASTIONDETECTOR2 = "/id";
 
 SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
-	local serverTime = GetServerTime();
-
-	local messages = {};
-
-	local maximumSpawnTime = (InvasionDetector.SpawnCooldown + InvasionDetector.SpawnWindow);
-
-	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
-		local spawned = invasionInfo.Spawned;
-		local lastSeen = invasionInfo.LastSeen;
-
-		local timeDifference = (serverTime - lastSeen);
-
-		-- Invasion is NOT active (wasn't seen recently)
-		if(timeDifference > (InvasionDetector.CheckSpeed * 2)) then
-			local endOfSpawnWindow = (lastSeen + maximumSpawnTime);
-
-			-- if our invasion is out of the bounds of the spawn time and is NOT active, it's a lost child (has since changed states when offline with no updates from guildies)
-			if(endOfSpawnWindow < serverTime) then
-				messages[#messages + 1] = invasionName .. " invasion has no reliable timer";
-			else
-				local remainingTimeOnCooldown = (serverTime - (lastSeen + InvasionDetector.SpawnCooldown));
-
-				-- Invasion is ON cooldown
-				if(remainingTimeOnCooldown < 0) then
-					messages[#messages + 1] = invasionName .. " invasion is ON cooldown. Cooldown ends in " .. Utility:ConvertSecondsToFormat(-remainingTimeOnCooldown, true);
-				else
-					local remainingTimeInWindow = (InvasionDetector.SpawnWindow - remainingTimeOnCooldown);
-
-					messages[#messages + 1] = invasionName .. " invasion is off cooldown. Remaining time in window is " .. Utility:ConvertSecondsToFormat(remainingTimeInWindow, true);
-				end
-			end
-		else
-			local spawnedSecondsAgo = (serverTime - spawned);
-
-			messages[#messages + 1] = invasionName .. " invasion is ACTIVE! Spawned " .. Utility:ConvertSecondsToFormat(spawnedSecondsAgo, true) .. " ago";
-		end
-	end
-
-	for _, message in ipairs(messages) do
-		if(argumentsString == "guild") then
-			SendChatMessage("[Invasion Detector] " .. message, "GUILD");
-		else
-			print("[Invasion Detector] " .. message);
-		end
-	end
+	InvasionDetector:OutputTimers(argumentsString);
 end

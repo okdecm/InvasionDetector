@@ -142,31 +142,56 @@ function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 	end
 end
 
-function Utility:TryNotifyGuild(message)
+function Utility:TryNotifyGuild(whoHasAddon, message)
 	-- F- it ALWAYS send it
-	SendChatMessage(message, "GUILD");
+	-- SendChatMessage(message, "GUILD");
 
-	-- local onlineMembers = {};
+	-- Also YOINKED from Nova - thank you bro
+	local onlineMembers = {};
 
-	-- local numTotalMembers = GetNumGuildMembers();
+	local numTotalMembers = GetNumGuildMembers();
 
-	-- for i = 1, numTotalMembers do
-	-- 	local name, _, _, _, _, _, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
+	for i = 1, numTotalMembers do
+		local name, _, _, _, _, _, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
 
-	-- 	if (name and online and InvasionDetector.HasAddon[name] and not isMobile) then
-	-- 		--If guild member is online and has addon installed add to temp table.
-	-- 		onlineMembers[name] = true;
-	-- 	end
-	-- end
+		if (name and online and whoHasAddon[name] and not isMobile) then
+			-- If guild member is online and has addon installed add it to the list
+			onlineMembers[name] = true;
+		end
+	end
 
-	-- local me = UnitName("player") .. "-" .. GetNormalizedRealmName();
+	local me = Utility:GetMeNormalized();
 
-	-- --Check temp table to see if we're first in alphabetical order.
-	-- for k, v in pairs(onlineMembers) do
-	-- 	if (k == me) then
-	-- 		SendChatMessage("[Invasion Detector] " .. message, "GUILD");
-	-- 	end
+	-- Whoever is first in the list has prio to notify
+	for who, isOnline in Utility:PairsByAlphabeticalKeys(onlineMembers) do
+		if (who == me) then
+			SendChatMessage(message, "GUILD");
+		end
 
-	-- 	return;
-	-- end
+		return;
+	end
+end
+
+-- SEE: https://www.lua.org/pil/19.3.html
+function Utility:PairsByAlphabeticalKeys(_table, sortFunction)
+	local clonedTable = {};
+
+	for n in pairs(_table) do
+		table.insert(clonedTable, n);
+	end
+
+	table.sort(clonedTable, sortFunction);
+
+	local i = 0;
+	local iterator = function()
+		i = i + 1;
+
+		if (clonedTable[i] == nil) then
+			return nil;
+		else
+			return clonedTable[i], _table[clonedTable[i]];
+		end
+	end
+
+	return iterator;
 end

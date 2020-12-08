@@ -1,4 +1,6 @@
 <Ui xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
 	<Script file="Libs\LibStub\LibStub.lua" />
 	<Include file="Libs\LibSerialize-1.1.0\LibSerialize.lua" />
+	<Include file="Libs\LibDeflate-1.0.2\LibDeflate.lua" />
+	<Include file="Libs\AceComm-3.0\AceComm-3.0.lua" />
 </Ui>
