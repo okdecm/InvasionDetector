@@ -42,7 +42,9 @@ function InvasionDetector:Initialize()
 	C_ChatInfo.RegisterAddonMessagePrefix(InvasionDetector.AddonMessagePrefix);
 end
 
-function InvasionDetector:StartChecking(inInstance)
+function InvasionDetector:StartChecking()
+	local inInstance = IsInInstance();
+	
 	-- If a ticker is already running - cancel it
 	if(InvasionDetector.CheckTicker ~= nil) then
 		InvasionDetector.CheckTicker:Cancel();
@@ -241,20 +243,14 @@ frame:SetScript(
 				InvasionDetector:Initialize();
 			end
 		elseif (event == "PLAYER_ENTERING_WORLD") then
-			local isInitialLogin, isReloadingUI = ...;
-
-			-- Only request a sync on initial login or reloading UI
-			if(isInitialLogin or isReloadingUI) then
-				InvasionDetector:RequestSync();
-			end
-
-			local inInstance = IsInInstance();
+			-- Re sync our database if possible (e.g. when leaving an instance and we want fresh timers)
+			InvasionDetector:RequestSync();
 
 			-- Start checking after 5 seconds
 			C_Timer.After(
 				5,
 				function()
-					InvasionDetector:StartChecking(inInstance);
+					InvasionDetector:StartChecking();
 				end
 			);
 		elseif (event == "CHAT_MSG_ADDON") then
