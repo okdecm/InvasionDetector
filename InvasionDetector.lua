@@ -14,7 +14,7 @@ function InvasionDetector:Initialize()
 	local currentVersion = GetAddOnMetadata("InvasionDetector", "Version") or 0;
 
 	if(InvasionDetectorDB.Version) then
-		print("InvasionDetectorDB.Version " .. InvasionDetectorDB.Version);
+		-- print("InvasionDetectorDB.Version " .. InvasionDetectorDB.Version);
 	end
 
 	local isDatabaseOutdated = (not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
@@ -40,83 +40,102 @@ function InvasionDetector:Initialize()
 
 	-- Register our addon messages
 	C_ChatInfo.RegisterAddonMessagePrefix(InvasionDetector.AddonMessagePrefix);
-
-	-- Start checking after 5 seconds
-	C_Timer.After(
-		5,
-		function()
-			InvasionDetector:StartChecking();
-		end
-	);
 end
 
-function InvasionDetector:StartChecking()
+function InvasionDetector:StartChecking(inInstance)
 	-- If a ticker is already running - cancel it
 	if(InvasionDetector.CheckTicker ~= nil) then
 		InvasionDetector.CheckTicker:Cancel();
 	end
 
-	-- Start the ticker
-	InvasionDetector.CheckTicker = C_Timer.NewTicker(
-		InvasionDetector.CheckSpeed,
-		function()
-			InvasionDetector:CheckForInvasions();
-		end
-	);
+	-- If we're in an instance, just run the checker once to flag any active invasions
+	if(inInstance) then
+		InvasionDetector:CheckForInvasions();
+	else
+		-- Start the ticker
+		InvasionDetector.CheckTicker = C_Timer.NewTicker(
+			InvasionDetector.CheckSpeed,
+			function()
+				InvasionDetector:CheckForInvasions();
+			end
+		);
+	end
 end
 
 function InvasionDetector:CheckForInvasions()
 	local checkTime = GetServerTime();
 
-	-- Our maximum spawn time
+	-- Get the instance status ourselves due to the possiblity of this callback being called whilst transitioning between instances
+	-- SEE: https://wow.gamepedia.com/API_C_Timer.NewTicker - Details area
+	local inInstance = IsInInstance();
+
 	local minimumSpawnTime = InvasionDetector.SpawnCooldown;
 
-	-- Map ID for Azeroth
-	local mapID = 947;
+	-- We can only scan for POI's when not in instances
+	if(not inInstance) then
+		-- Map ID for Azeroth
+		local mapID = 947;
 
-	-- Get all our points of interest on the map
-	local pointsOfInterest = C_AreaPoiInfo.GetAreaPOIForMap(947);
-	
-	for _, pointOfInterest in ipairs(pointsOfInterest) do
-		local pointOfInterestInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, pointOfInterest);
+		-- Get all our points of interest on the map
+		local pointsOfInterest = C_AreaPoiInfo.GetAreaPOIForMap(947);
+		
+		for _, pointOfInterest in ipairs(pointsOfInterest) do
+			local pointOfInterestInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, pointOfInterest);
 
-		-- Invasion found!
-		if(pointOfInterestInfo.textureIndex == 41) then
-			local invasionName = pointOfInterestInfo.description;
+			-- Invasion found!
+			if(pointOfInterestInfo.textureIndex == 41) then
+				local invasionName = pointOfInterestInfo.description;
 
-			-- Make sure we have the structure to store info about this invasion
-			InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
-				["Spawned"] = nil,
-				["LastSeen"] = nil
-			};
+				-- Make sure we have the structure to store info about this invasion
+				InvasionDetectorDB.Invasions[invasionName] = InvasionDetectorDB.Invasions[invasionName] or {
+					["Spawned"] = nil,
+					["LastSeen"] = nil,
+					["HasEnteredInstance"] = nil,
+					["Despawned"] = nil
+				};
 
-			-- Get our last seen time
-			local lastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
-			local timeDifference = (checkTime - (lastSeen or 0));
+				-- Get our last seen time
+				local lastSeen = InvasionDetectorDB.Invasions[invasionName].LastSeen;
+				local timeDifference = (checkTime - (lastSeen or 0));
 
-			-- If we've not seen this invasion before or it was last seen as long ago as our decay buffer - it's a new spawn!
-			if(not lastSeen or timeDifference >= minimumSpawnTime) then
-				-- Note down when it spawned
-				InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
+				-- If we've not seen this invasion before or it was last seen as long ago as our decay buffer - it's a new spawn!
+				if(not lastSeen or timeDifference >= minimumSpawnTime) then
+					-- Note down when it spawned
+					InvasionDetectorDB.Invasions[invasionName].Spawned = checkTime;
+					InvasionDetectorDB.Invasions[invasionName].Despawned = nil;
 
-				-- Try and notify in the guild chat
-				Utility:TryNotifyGuild("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+					-- Try and notify in the guild chat
+					Utility:TryNotifyGuild("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+				end
+
+				-- Store the time we saw it
+				InvasionDetectorDB.Invasions[invasionName].LastSeen = checkTime;
+				-- Clear the instance flag
+				InvasionDetectorDB.Invasions[invasionName].HasEnteredInstance = false;
 			end
-
-			-- Store the time we saw it
-			InvasionDetectorDB.Invasions[invasionName].LastSeen = checkTime;
 		end
 	end
 
-	-- Check our history for any de-spawns
+	-- Check our history for any de-spawns, and tag any we lose track of due to entering instances
 	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
 		local spawned = invasionInfo.Spawned;
 		local lastSeen = invasionInfo.LastSeen;
+		local despanwed = invasionInfo.Despawned;
 
-		-- If it was last seen in the past, check if it's despawned
-		if(lastSeen < checkTime and lastSeen > (checkTime - (InvasionDetector.CheckSpeed * 2))) then
-			-- Try and notify in the guild chat
-			Utility:TryNotifyGuild("[Invasion Detector] Invasion has ended in " .. invasionName);
+		local timeDifference = (checkTime - lastSeen);
+
+		-- If it was last seen in the past, and it's still within the cooldown window, and it hasn't already been marked as despawned - it's a recent despawn
+		if(lastSeen < checkTime and (timeDifference < minimumSpawnTime) and not despanwed) then
+			-- If we've lost track of it due to entering an instance, note that down
+			if(inInstance) then
+				invasionInfo.HasEnteredInstance = true;
+			else
+				-- Note down when it despawned
+				invasionInfo.Despawned = checkTime;
+
+				-- Try and notify in the guild chat
+				Utility:TryNotifyGuild("[Invasion Detector] Invasion has ended in " .. invasionName);
+			end
 		end
 	end
 
@@ -224,10 +243,20 @@ frame:SetScript(
 		elseif (event == "PLAYER_ENTERING_WORLD") then
 			local isInitialLogin, isReloadingUI = ...;
 
-			-- Only request a sync on initial login
+			-- Only request a sync on initial login or reloading UI
 			if(isInitialLogin or isReloadingUI) then
 				InvasionDetector:RequestSync();
 			end
+
+			local inInstance = IsInInstance();
+
+			-- Start checking after 5 seconds
+			C_Timer.After(
+				5,
+				function()
+					InvasionDetector:StartChecking(inInstance);
+				end
+			);
 		elseif (event == "CHAT_MSG_ADDON") then
 			local prefix, text, channel, sender, target = ...;
 
@@ -252,32 +281,37 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 	for invasionName, invasionInfo in pairs(InvasionDetectorDB.Invasions) do
 		local spawned = invasionInfo.Spawned;
 		local lastSeen = invasionInfo.LastSeen;
+		local hasEnteredInstance = invasionInfo.HasEnteredInstance;
 
-		local timeDifference = (serverTime - lastSeen);
-
-		-- Invasion is NOT active (wasn't seen recently)
-		if(timeDifference > (InvasionDetector.CheckSpeed * 2)) then
-			local endOfSpawnWindow = (lastSeen + maximumSpawnTime);
-
-			-- if our invasion is out of the bounds of the spawn time and is NOT active, it's a lost child (has since changed states when offline with no updates from guildies)
-			if(endOfSpawnWindow < serverTime) then
-				messages[#messages + 1] = invasionName .. " invasion has no reliable timer";
-			else
-				local remainingTimeOnCooldown = (serverTime - (lastSeen + InvasionDetector.SpawnCooldown));
-
-				-- Invasion is ON cooldown
-				if(remainingTimeOnCooldown < 0) then
-					messages[#messages + 1] = invasionName .. " invasion is ON cooldown. Cooldown ends in " .. Utility:ConvertSecondsToFormat(-remainingTimeOnCooldown, true);
-				else
-					local remainingTimeInWindow = (InvasionDetector.SpawnWindow - remainingTimeOnCooldown);
-
-					messages[#messages + 1] = invasionName .. " invasion is off cooldown. Remaining time in window is " .. Utility:ConvertSecondsToFormat(remainingTimeInWindow, true);
-				end
-			end
+		if(hasEnteredInstance) then
+			messages[#messages + 1] = invasionName .. " invasion lost its timer due to the player entering an instance";
 		else
-			local spawnedSecondsAgo = (serverTime - spawned);
+			local timeDifference = (serverTime - lastSeen);
 
-			messages[#messages + 1] = invasionName .. " invasion is ACTIVE! Spawned " .. Utility:ConvertSecondsToFormat(spawnedSecondsAgo, true) .. " ago";
+			-- Invasion is NOT active (wasn't seen recently)
+			if(timeDifference > (InvasionDetector.CheckSpeed * 2)) then
+				local endOfSpawnWindow = (lastSeen + maximumSpawnTime);
+
+				-- if our invasion is out of the bounds of the spawn time and is NOT active, it's a lost child (has since changed states when offline with no updates from guildies)
+				if(endOfSpawnWindow < serverTime) then
+					messages[#messages + 1] = invasionName .. " invasion has no reliable timer";
+				else
+					local remainingTimeOnCooldown = (serverTime - (lastSeen + InvasionDetector.SpawnCooldown));
+
+					-- Invasion is ON cooldown
+					if(remainingTimeOnCooldown < 0) then
+						messages[#messages + 1] = invasionName .. " invasion is ON cooldown. Cooldown ends in " .. Utility:ConvertSecondsToFormat(-remainingTimeOnCooldown, true);
+					else
+						local remainingTimeInWindow = (InvasionDetector.SpawnWindow - remainingTimeOnCooldown);
+
+						messages[#messages + 1] = invasionName .. " invasion is off cooldown. Remaining time in window is " .. Utility:ConvertSecondsToFormat(remainingTimeInWindow, true);
+					end
+				end
+			else
+				local spawnedSecondsAgo = (serverTime - spawned);
+
+				messages[#messages + 1] = invasionName .. " invasion is ACTIVE! Spawned " .. Utility:ConvertSecondsToFormat(spawnedSecondsAgo, true) .. " ago";
+			end
 		end
 	end
 
