@@ -9,13 +9,13 @@ InvasionDetector = {
 	["SpawnWindow"] = 3600, -- 1 Hour
 	
 	["CheckTicker"] = nil,
-	["HasAddon"] = {},
+	["HasAddon"] = {}
 };
 
 function InvasionDetector:Initialize()
 	local currentVersion = GetAddOnMetadata("InvasionDetector", "Version") or 0;
 
-	local isDatabaseOutdated = (not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
+	local isDatabaseOutdated = (not InvasionDetectorDB or not InvasionDetectorDB.Version or InvasionDetectorDB.Version < currentVersion);
 
 	-- If we don't have a DB, or it's out of date, go ahead and (re-)create one
 	if(not InvasionDetectorDB or isDatabaseOutdated) then
@@ -148,13 +148,13 @@ function InvasionDetector:CheckForInvasions()
 end
 
 function InvasionDetector:RequestSync()
-	print("[Invasion Detector] IS REQUESTING SYNC FROM GUILD");
+	-- print("[Invasion Detector] IS REQUESTING SYNC FROM GUILD");
 
 	InvasionDetector:SendCommMessage("SYNC_REQUEST", nil, "GUILD");
 end
 
 function InvasionDetector:SendSync(target, shouldCounterSync)
-	print("[Invasion Detector] IS SENDING SYNC TO " .. target);
+	-- print("[Invasion Detector] IS SENDING SYNC TO " .. target);
 
 	local response = {
 		["Version"] = InvasionDetectorDB.Version,
@@ -167,11 +167,11 @@ end
 
 function InvasionDetector:Sync(sender, version, invasions, shouldCounterSync)
 	if(not version or version < InvasionDetectorDB.Version) then
-		print("[Invasion Detector] Unable to sync - other user has out of date addon");
+		print("[Invasion Detector] Unable to sync - other user has out of date addon (" .. sender .. ")");
 	elseif (version > InvasionDetectorDB.Version) then
 		print("[Invasion Detector] Unable to sync - your addon is out of date");
 	else
-		print("[Invasion Detector] IS SYNCING WITH DATA FROM " .. sender);
+		-- print("[Invasion Detector] IS SYNCING WITH DATA FROM " .. sender);
 
 		for invasionName, invasionInfo in pairs(invasions) do
 			local lastSeen = invasionInfo.LastSeen;
@@ -266,7 +266,21 @@ function InvasionDetector:RecieveGuildMessage(text)
 	local command, arg = strsplit(" ", text, 2);
 
 	if(string.match(command, "^!id")) then
+		local serverTime = GetServerTime();
+
+		-- Get how long it's been since our last send
+		local timeDifference = (serverTime - (InvasionDetectorDB.LastSentGuildTimers or 0));
+
+		-- If it has been sent within the last 2 minutes, don't bother
+		if(timeDifference < (60 * 2)) then
+			return;
+		end
+
+		-- Send the timers out to the guild
 		InvasionDetector:OutputTimers("guild");
+
+		-- Update our last sent time
+		InvasionDetectorDB.LastSentGuildTimers = serverTime;
 	end
 end
 

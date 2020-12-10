@@ -3,6 +3,7 @@
 ## Author: Dec Murphy (@OKDecM)
 ## Notes: Detect any invasion events and notify your guild
 ## Version: 0.0.3
+## DefaultState: enabled
 ## SavedVariables: InvasionDetectorDB
 
 embeds.xml
