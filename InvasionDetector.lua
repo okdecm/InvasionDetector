@@ -331,6 +331,8 @@ function InvasionDetector:OutputTimers(chatType)
 	for _, message in ipairs(messages) do
 		if(chatType == "guild") then
 			Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] " .. message, "GUILD");
+		elseif(chatType == "party") then
+			SendChatMessage("[Invasion Detector] " .. message, "PARTY");
 		else
 			print("[Invasion Detector] " .. message);
 		end
