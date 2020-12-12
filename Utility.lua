@@ -142,28 +142,39 @@ function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 	end
 end
 
-function Utility:TryNotifyGuild(whoHasAddon, message)
+function Utility:TryNotifyGuild(whoHasAddon, message, isEligibleFilterFunction)
 	-- F- it ALWAYS send it
 	-- SendChatMessage(message, "GUILD");
 
 	-- Also YOINKED from Nova - thank you bro
-	local onlineMembers = {};
+	local eligiblePlayers = {};
 
 	local numTotalMembers = GetNumGuildMembers();
 
 	for i = 1, numTotalMembers do
-		local name, _, _, _, _, _, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
+		local name, _, _, _, _, zone, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
 
+		-- If guild member is online and has addon installed
 		if (name and online and whoHasAddon[name] and not isMobile) then
-			-- If guild member is online and has addon installed add it to the list
-			onlineMembers[name] = true;
+			print(name .. " is online and has the addon");
+
+			local isEligible = true;
+
+			if(isEligibleFilterFunction == "function") then
+				isEligible = isEligibleFilterFunction(name);
+			end
+
+			if(isEligible) then
+				print(name .. " is eligible to send the guild notif");
+				eligiblePlayers[name] = true;
+			end
 		end
 	end
 
 	local me = Utility:GetMeNormalized();
 
 	-- Whoever is first in the list has prio to notify
-	for who, isOnline in Utility:PairsByAlphabeticalKeys(onlineMembers) do
+	for who, _ in Utility:PairsByAlphabeticalKeys(eligiblePlayers) do
 		if (who == me) then
 			SendChatMessage(message, "GUILD");
 		end
