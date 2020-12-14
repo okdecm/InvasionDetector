@@ -204,7 +204,6 @@ function Utility:TryNotifyGuild(whoHasAddon, message, isGuildMemberEligiblePredi
 			end
 
 			if(isEligible) then
-				print(name .. " is eligible to send the guild notif");
 				eligiblePlayers[name] = true;
 			end
 		end
