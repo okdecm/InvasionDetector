@@ -8,5 +8,7 @@
 
 embeds.xml
 
+Data/Maps.lua
+
 Utility.lua
 InvasionDetector.lua
