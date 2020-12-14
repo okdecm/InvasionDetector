@@ -142,7 +142,6 @@ function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 	end
 end
 
-function Utility:TryNotifyGuild(whoHasAddon, message, isEligibleFilterFunction)
 function Utility:Find(list, predicateFunction)
 	if(type(predicateFunction) ~= "function") then
 		error("predicateFunction is not a function");
@@ -184,6 +183,7 @@ function Utility:IsGuildMemberInInstance(rosterIndex)
 	return true;
 end
 
+function Utility:TryNotifyGuild(whoHasAddon, message, isGuildMemberEligiblePredicateFunction)
 	-- F- it ALWAYS send it
 	-- SendChatMessage(message, "GUILD");
 
@@ -196,13 +196,11 @@ end
 		local name, _, _, _, _, zone, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
 
 		-- If guild member is online and has addon installed
-		if (name and online and whoHasAddon[name] and not isMobile) then
-			print(name .. " is online and has the addon");
-
+		if (name and online and not isMobile) then
 			local isEligible = true;
 
-			if(isEligibleFilterFunction == "function") then
-				isEligible = isEligibleFilterFunction(name);
+			if(type(isGuildMemberEligiblePredicateFunction) == "function") then
+				isEligible = isGuildMemberEligiblePredicateFunction(i);
 			end
 
 			if(isEligible) then
