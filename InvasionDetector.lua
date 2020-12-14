@@ -110,7 +110,7 @@ function InvasionDetector:CheckForInvasions()
 					InvasionDetectorDB.Invasions[invasionName].Despawned = nil;
 
 					-- Try and notify in the guild chat
-					Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion up! Spotted in " .. invasionName);
+					InvasionDetector:TryNotifyGuild("[Invasion Detector] Invasion up! Spotted in " .. invasionName);
 				end
 
 				-- Store the time we saw it
@@ -139,7 +139,7 @@ function InvasionDetector:CheckForInvasions()
 				invasionInfo.Despawned = checkTime;
 
 				-- Try and notify in the guild chat
-				Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] Invasion has ended in " .. invasionName);
+				InvasionDetector:TryNotifyGuild("[Invasion Detector] Invasion has ended in " .. invasionName);
 			end
 		end
 	end
@@ -330,13 +330,23 @@ function InvasionDetector:OutputTimers(chatType)
 
 	for _, message in ipairs(messages) do
 		if(chatType == "guild") then
-			Utility:TryNotifyGuild(InvasionDetector.HasAddon, "[Invasion Detector] " .. message, "GUILD");
+			InvasionDetector:TryNotifyGuild("[Invasion Detector] " .. message);
 		elseif(chatType == "party") then
 			SendChatMessage("[Invasion Detector] " .. message, "PARTY");
 		else
 			print("[Invasion Detector] " .. message);
 		end
 	end
+end
+
+function InvasionDetector:TryNotifyGuild(message)
+	Utility:TryNotifyGuild(
+		InvasionDetector.HasAddon,
+		message,
+		function(rosterIndex)
+			return Utility:IsGuildMemberInInstance(rosterIndex);
+		end
+	);
 end
 
 local frame = CreateFrame("Frame", "InvasionDetectorFrame");
