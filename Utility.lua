@@ -155,6 +155,35 @@ function Utility:Find(list, predicateFunction)
 	end
 end
 
+function Utility:IsGuildMemberInInstance(rosterIndex)
+	-- Get the players guild roster info
+	local name, _, _, _, _, zone, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(rosterIndex);
+
+	-- If the player is online
+	if (name and online and not isMobile) then
+		-- Get the map info if we can (if we can't assume they're out in the open world)
+		local mapInfo = Utility:Find(
+			Maps,
+			function(mapID, mapInfo)
+				-- Instanced zones count as their own Map
+				if(mapInfo.Name == zone) then
+					return true;
+				end
+
+				return false;
+			end
+		);
+
+		-- If their map info instance type is above 0, it's an instance
+		if(mapInfo and mapInfo.InstanceType > 0) then
+			return false;
+		end
+	end
+
+	-- They're in the open world
+	return true;
+end
+
 	-- F- it ALWAYS send it
 	-- SendChatMessage(message, "GUILD");
 
