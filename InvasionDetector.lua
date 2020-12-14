@@ -284,7 +284,7 @@ function InvasionDetector:RecieveGuildMessage(text)
 	end
 end
 
-function InvasionDetector:OutputTimers(chatType)
+function InvasionDetector:OutputTimers(chatType, force)
 	local serverTime = GetServerTime();
 
 	local messages = {};
@@ -330,7 +330,12 @@ function InvasionDetector:OutputTimers(chatType)
 
 	for _, message in ipairs(messages) do
 		if(chatType == "guild") then
-			InvasionDetector:TryNotifyGuild("[Invasion Detector] " .. message);
+			-- Unless we're forcing it, let somebody else try and pick it up unless we have to
+			if(force) then
+				SendChatMessage("[Invasion Detector] " .. message, "GUILD");
+			else
+				InvasionDetector:TryNotifyGuild("[Invasion Detector] " .. message);
+			end
 		elseif(chatType == "party") then
 			SendChatMessage("[Invasion Detector] " .. message, "PARTY");
 		else
@@ -388,5 +393,5 @@ SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
 SLASH_INVASTIONDETECTOR2 = "/id";
 
 SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
-	InvasionDetector:OutputTimers(argumentsString);
+	InvasionDetector:OutputTimers(argumentsString, true);
 end
