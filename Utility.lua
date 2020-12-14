@@ -143,6 +143,18 @@ function Utility:ConvertSecondsToFormat(seconds, countOnly, type, space)
 end
 
 function Utility:TryNotifyGuild(whoHasAddon, message, isEligibleFilterFunction)
+function Utility:Find(list, predicateFunction)
+	if(type(predicateFunction) ~= "function") then
+		error("predicateFunction is not a function");
+	end
+
+	for key, value in pairs(list) do
+		if(predicateFunction(key, value)) then
+			return value;
+		end
+	end
+end
+
 	-- F- it ALWAYS send it
 	-- SendChatMessage(message, "GUILD");
 
