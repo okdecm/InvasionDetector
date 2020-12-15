@@ -196,7 +196,7 @@ function Utility:TryNotifyGuild(whoHasAddon, message, isGuildMemberEligiblePredi
 		local name, _, _, _, _, zone, _, _, online, _, _, _, _, isMobile = GetGuildRosterInfo(i);
 
 		-- If guild member is online and has addon installed
-		if (name and online and not isMobile) then
+		if (name and online and whoHasAddon[name] and not isMobile) then
 			local isEligible = true;
 
 			if(type(isGuildMemberEligiblePredicateFunction) == "function") then
