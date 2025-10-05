@@ -162,7 +162,7 @@ function module:RenderInvasions(frame, invasions, spawnCooldown, spawnWindow)
 						zoneFrame.detail:SetText("On cooldown for " .. SecondsToClock(cooldown));
 						zoneFrame.detail:SetTextColor(0.6, 1, 0.6, 1);
 					else
-						local window = spawnWindow - now;
+						local window = (spawnWindow - (timeSinceDespawn - spawnCooldown));
 
 						zoneFrame.detail:SetText("Spawn within " .. SecondsToClock(window));
 						zoneFrame.detail:SetTextColor(1, 1, 0.6, 1);
