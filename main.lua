@@ -193,74 +193,82 @@ frame:SetScript(
 			-- Re sync our database if possible (e.g. when leaving an instance and we want fresh timers)
 			sync:RequestSync();
 
-			checker:Start({
-				rate = 5,
-				onTick = function(when, layer, seenInvasions)
-					PruneInvasions();
-
-					local lastUpdatedOnTheSameLayer = (checker.lastUpdated and checker.lastUpdated.layer == layer);
-
-					logger.debug("Tick received for layer " .. layer .. " with " .. tostring(#seenInvasions) .. " invasions");
-
-					InvasionDetectorDB.invasions[layer] = InvasionDetectorDB.invasions[layer] or {};
-
-					for _, zone in ipairs(seenInvasions) do
-						local existingInvasion = InvasionDetectorDB.invasions[layer][zone];
-
-						if (existingInvasion and existingInvasion.status == "active") then
-							-- Already keeping track of invasion, update last seen
-							existingInvasion.lastSeen = when;
-						else
-							-- Newly active invasion
-							InvasionDetectorDB.invasions[layer][zone] = {
-								status = "active",
-								lastSeen = when
-							};
-
-							-- If we last updated on the same layer, we can be sure this invasion has spawned
-							if (lastUpdatedOnTheSameLayer) then
-								logger.debug("Invasion spawned in " .. zone .. " on layer " .. layer);
-
-								InvasionDetectorDB.invasions[layer][zone].spawnedAt = when;
-
-								sync:AnnounceInvasionSpawned(layer, zone, when);
-								OnInvasionSpawned(layer, zone);
-							end
-						end
-					end
-
-					for zone, existingInvasion in pairs(InvasionDetectorDB.invasions[layer]) do
-						local sawInvasion = collections:Contains(seenInvasions, zone);
-
-						if (not sawInvasion) then
-							if (existingInvasion.status == "inactive") then
-								-- Already keeping track of invasion, skip it
-							else
-								-- Newly inactive invasion
-								InvasionDetectorDB.invasions[layer][zone] = {
-									status = "inactive",
-									lastSeen = existingInvasion.lastSeen
-								};
-
-								-- If we last updated on the same layer, we can be sure this invasion has despawned
-								if (lastUpdatedOnTheSameLayer) then
-									logger.debug("Invasion despawned in " .. zone .. " on layer " .. layer);
-
-									InvasionDetectorDB.invasions[layer][zone].despawnedAt = existingInvasion.lastSeen;
-
-									sync:AnnounceInvasionDespawned(layer, zone, when);
-									OnInvasionDespawned(layer, zone);
-								end
-							end
-						end
-					end
+			-- Wait for 5 seconds to allow POI's to load in (hacky)
+			C_Timer.After(
+				5,
+				function()
+					checker:Start({
+						rate = 5,
+						onTick = OnTick
+					});
 				end
-			});
+			);
 		else
 			logger.warn("Unhandled event: " .. tostring(event));
 		end
 	end
 );
+
+function OnTick(when, layer, seenInvasions)
+	PruneInvasions();
+
+	local lastUpdatedOnTheSameLayer = (checker.lastUpdated and checker.lastUpdated.layer == layer);
+
+	logger.debug("Tick received for layer " .. layer .. " with " .. tostring(#seenInvasions) .. " invasions");
+
+	InvasionDetectorDB.invasions[layer] = InvasionDetectorDB.invasions[layer] or {};
+
+	for _, zone in ipairs(seenInvasions) do
+		local existingInvasion = InvasionDetectorDB.invasions[layer][zone];
+
+		if (existingInvasion and existingInvasion.status == "active") then
+			-- Already keeping track of invasion, update last seen
+			existingInvasion.lastSeen = when;
+		else
+			-- Newly active invasion
+			InvasionDetectorDB.invasions[layer][zone] = {
+				status = "active",
+				lastSeen = when
+			};
+
+			-- If we last updated on the same layer, we can be sure this invasion has spawned
+			if (lastUpdatedOnTheSameLayer) then
+				logger.debug("Invasion spawned in " .. zone .. " on layer " .. layer);
+
+				InvasionDetectorDB.invasions[layer][zone].spawnedAt = when;
+
+				sync:AnnounceInvasionSpawned(layer, zone, when);
+				OnInvasionSpawned(layer, zone);
+			end
+		end
+	end
+
+	for zone, existingInvasion in pairs(InvasionDetectorDB.invasions[layer]) do
+		local sawInvasion = collections:Contains(seenInvasions, zone);
+
+		if (not sawInvasion) then
+			if (existingInvasion.status == "inactive") then
+				-- Already keeping track of invasion, skip it
+			else
+				-- Newly inactive invasion
+				InvasionDetectorDB.invasions[layer][zone] = {
+					status = "inactive",
+					lastSeen = existingInvasion.lastSeen
+				};
+
+				-- If we last updated on the same layer, we can be sure this invasion has despawned
+				if (lastUpdatedOnTheSameLayer) then
+					logger.debug("Invasion despawned in " .. zone .. " on layer " .. layer);
+
+					InvasionDetectorDB.invasions[layer][zone].despawnedAt = existingInvasion.lastSeen;
+
+					sync:AnnounceInvasionDespawned(layer, zone, when);
+					OnInvasionDespawned(layer, zone);
+				end
+			end
+		end
+	end
+end
 
 function OnInvasionSpawned(layer, zone)
 	MaybeAnnounceToGuild("Invasion spawned - " .. zone .. " (layer " .. layer .. ")");
