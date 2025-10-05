@@ -1,14 +1,25 @@
-## Interface: 11305
+## Interface: 11507
 ## Title: Invasion Detector
 ## Author: Dec Murphy (@OKDecM)
 ## Notes: Detect any invasion events and notify your guild
-## Version: 0.0.3
-## DefaultState: enabled
+## Version: 1.0.0
+## Dependencies: NovaWorldBuffs
 ## SavedVariables: InvasionDetectorDB
 
 embeds.xml
 
-Data/Maps.lua
+data/maps.lua
 
-Utility.lua
-InvasionDetector.lua
+common/versioning.lua
+common/collections.lua
+common/logging.lua
+common/guids.lua
+common/communication.lua
+common/guild.lua
+common/layers.lua
+
+modules/ui.lua
+modules/sync.lua
+modules/checker.lua
+
+main.lua

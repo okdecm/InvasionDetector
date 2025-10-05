@@ -1,178 +1,183 @@
-Maps = {
+local addonName, addon = ...;
+
+local data = {
 	["0"] = {
-		["Name"] = "Eastern Kingdoms",
-		["InstanceType"] = 0
+		name = "Eastern Kingdoms",
+		instanceType = 0
 	},
 	["1"] = {
-		["Name"] = "Kalimdor",
-		["InstanceType"] = 0
+		name = "Kalimdor",
+		instanceType = 0
 	},
 	["13"] = {
-		["Name"] = "Testing",
-		["InstanceType"] = 0
+		name = "Testing",
+		instanceType = 0
 	},
 	["25"] = {
-		["Name"] = "Scott Test",
-		["InstanceType"] = 0
+		name = "Scott Test",
+		instanceType = 0
 	},
 	["29"] = {
-		["Name"] = "CashTest",
-		["InstanceType"] = 1
+		name = "CashTest",
+		instanceType = 1
 	},
 	["30"] = {
-		["Name"] = "Alterac Valley",
-		["InstanceType"] = 3
+		name = "Alterac Valley",
+		instanceType = 3
 	},
 	["33"] = {
-		["Name"] = "Shadowfang Keep",
-		["InstanceType"] = 1
+		name = "Shadowfang Keep",
+		instanceType = 1
 	},
 	["34"] = {
-		["Name"] = "Stormwind Stockade",
-		["InstanceType"] = 1
+		name = "Stormwind Stockade",
+		instanceType = 1
 	},
 	["35"] = {
-		["Name"] = "<unused>StormwindPrison",
-		["InstanceType"] = 0
+		name = "<unused>StormwindPrison",
+		instanceType = 0
 	},
 	["36"] = {
-		["Name"] = "Deadmines",
-		["InstanceType"] = 1
+		name = "Deadmines",
+		instanceType = 1
 	},
 	["37"] = {
-		["Name"] = "Azshara Crater",
-		["InstanceType"] = 0
+		name = "Azshara Crater",
+		instanceType = 0
 	},
 	["42"] = {
-		["Name"] = "Collin's Test",
-		["InstanceType"] = 0
+		name = "Collin's Test",
+		instanceType = 0
 	},
 	["43"] = {
-		["Name"] = "Wailing Caverns",
-		["InstanceType"] = 1
+		name = "Wailing Caverns",
+		instanceType = 1
 	},
 	["44"] = {
-		["Name"] = "<unused> Monastery",
-		["InstanceType"] = 1
+		name = "<unused> Monastery",
+		instanceType = 1
 	},
 	["47"] = {
-		["Name"] = "Razorfen Kraul",
-		["InstanceType"] = 1
+		name = "Razorfen Kraul",
+		instanceType = 1
 	},
 	["48"] = {
-		["Name"] = "Blackfathom Deeps",
-		["InstanceType"] = 1
+		name = "Blackfathom Deeps",
+		instanceType = 1
 	},
 	["70"] = {
-		["Name"] = "Uldaman",
-		["InstanceType"] = 1
+		name = "Uldaman",
+		instanceType = 1
 	},
 	["90"] = {
-		["Name"] = "Gnomeregan",
-		["InstanceType"] = 1
+		name = "Gnomeregan",
+		instanceType = 1
 	},
 	["109"] = {
-		["Name"] = "Sunken Temple",
-		["InstanceType"] = 1
+		name = "Sunken Temple",
+		instanceType = 1
 	},
 	["129"] = {
-		["Name"] = "Razorfen Downs",
-		["InstanceType"] = 1
+		name = "Razorfen Downs",
+		instanceType = 1
 	},
 	["169"] = {
-		["Name"] = "Emerald Dream",
-		["InstanceType"] = 2
+		name = "Emerald Dream",
+		instanceType = 2
 	},
 	["189"] = {
-		["Name"] = "Scarlet Monastery",
-		["InstanceType"] = 1
+		name = "Scarlet Monastery",
+		instanceType = 1
 	},
 	["209"] = {
-		["Name"] = "Zul'Farrak",
-		["InstanceType"] = 1
+		name = "Zul'Farrak",
+		instanceType = 1
 	},
 	["229"] = {
-		["Name"] = "Blackrock Spire",
-		["InstanceType"] = 1
+		name = "Blackrock Spire",
+		instanceType = 1
 	},
 	["230"] = {
-		["Name"] = "Blackrock Depths",
-		["InstanceType"] = 1
+		name = "Blackrock Depths",
+		instanceType = 1
 	},
 	["249"] = {
-		["Name"] = "Onyxia's Lair",
-		["InstanceType"] = 2
+		name = "Onyxia's Lair",
+		instanceType = 2
 	},
 	["269"] = {
-		["Name"] = "Caverns of Time",
-		["InstanceType"] = 1
+		name = "Caverns of Time",
+		instanceType = 1
 	},
 	["289"] = {
-		["Name"] = "Scholomance",
-		["InstanceType"] = 1
+		name = "Scholomance",
+		instanceType = 1
 	},
 	["309"] = {
-		["Name"] = "Zul'Gurub",
-		["InstanceType"] = 2
+		name = "Zul'Gurub",
+		instanceType = 2
 	},
 	["329"] = {
-		["Name"] = "Stratholme",
-		["InstanceType"] = 1
+		name = "Stratholme",
+		instanceType = 1
 	},
 	["349"] = {
-		["Name"] = "Maraudon",
-		["InstanceType"] = 1
+		name = "Maraudon",
+		instanceType = 1
 	},
 	["369"] = {
-		["Name"] = "Deeprun Tram",
-		["InstanceType"] = 0
+		name = "Deeprun Tram",
+		instanceType = 0
 	},
 	["389"] = {
-		["Name"] = "Ragefire Chasm",
-		["InstanceType"] = 1
+		name = "Ragefire Chasm",
+		instanceType = 1
 	},
 	["409"] = {
-		["Name"] = "Molten Core",
-		["InstanceType"] = 2
+		name = "Molten Core",
+		instanceType = 2
 	},
 	["429"] = {
-		["Name"] = "Dire Maul",
-		["InstanceType"] = 1
+		name = "Dire Maul",
+		instanceType = 1
 	},
 	["449"] = {
-		["Name"] = "Alliance PVP Barracks",
-		["InstanceType"] = 0
+		name = "Alliance PVP Barracks",
+		instanceType = 0
 	},
 	["450"] = {
-		["Name"] = "Horde PVP Barracks",
-		["InstanceType"] = 0
+		name = "Horde PVP Barracks",
+		instanceType = 0
 	},
 	["451"] = {
-		["Name"] = "Development Land",
-		["InstanceType"] = 0
+		name = "Development Land",
+		instanceType = 0
 	},
 	["469"] = {
-		["Name"] = "Blackwing Lair",
-		["InstanceType"] = 2
+		name = "Blackwing Lair",
+		instanceType = 2
 	},
 	["489"] = {
-		["Name"] = "Warsong Gulch",
-		["InstanceType"] = 3
+		name = "Warsong Gulch",
+		instanceType = 3
 	},
 	["509"] = {
-		["Name"] = "Ruins of Ahn'Qiraj",
-		["InstanceType"] = 2
+		name = "Ruins of Ahn'Qiraj",
+		instanceType = 2
 	},
 	["529"] = {
-		["Name"] = "Arathi Basin",
-		["InstanceType"] = 3
+		name = "Arathi Basin",
+		instanceType = 3
 	},
 	["531"] = {
-		["Name"] = "Ahn'Qiraj Temple",
-		["InstanceType"] = 2
+		name = "Ahn'Qiraj Temple",
+		instanceType = 2
 	},
 	["533"] = {
-		["Name"] = "Naxxramas",
-		["InstanceType"] = 2
+		name = "Naxxramas",
+		instanceType = 2
 	}
 };
+
+addon.data = addon.data or {};
+addon.data.maps = data;
