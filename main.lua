@@ -112,6 +112,7 @@ frame:SetScript(
 				InvasionDetectorDB = {
 					addonVersion = addon.version,
 					profile = {
+						announcements = true,
 						minimap = {
 							hide = false
 						}
