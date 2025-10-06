@@ -48,7 +48,7 @@ function module:Start(config)
 
 			local layer = layers:GetCurrentLayer();
 
-			if (not layer or layer < 1) then
+			if (not layer) then
 				logger.debug("Unable to determine current layer - skipping tick");
 
 				return;
