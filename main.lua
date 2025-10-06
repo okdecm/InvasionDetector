@@ -359,7 +359,9 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 		-- MaybeAnnounceToGuild("Ignore this - testing if some code works");
 	end
 
-	local arguments = strsplit(" ", argumentsString);
+	local arguments = {
+		strsplit(" ", argumentsString)
+	};
 
 	local command = arguments[1];
 
