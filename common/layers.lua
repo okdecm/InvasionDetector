@@ -9,7 +9,7 @@ function module:GetCurrentLayer()
 	local layer = NWB_CurrentLayer;
 
 	if (not layer or layer < 1) then
-		error("Unable to determine current layer");
+		return nil;
 	end
 
 	return layer;
