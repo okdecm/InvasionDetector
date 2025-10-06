@@ -131,11 +131,12 @@ function module:Sync(target, currentLayer, invasions, shouldCounterSync)
 		}
 	);
 
-	if (target) then
-		Communicate(target, "WHISPER", message);
+	if (target == "GUILD") then
+		Communicate(nil, "GUILD", message);
 
 		return;
 	end
 
-	Communicate(nil, "GUILD", message);
+	Communicate(target, "WHISPER", message);
+
 end

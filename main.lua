@@ -171,7 +171,7 @@ frame:SetScript(
 				function()
 					local currentLayer = layers:GetCurrentLayer();
 
-					sync:Sync(nil, currentLayer, InvasionDetectorDB.invasions, false);
+					sync:Sync("GUILD", currentLayer, InvasionDetectorDB.invasions, false);
 				end
 			);
 		elseif(event == "PLAYER_ENTERING_WORLD") then
