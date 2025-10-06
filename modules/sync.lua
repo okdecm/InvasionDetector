@@ -70,6 +70,7 @@ function module:Initialize(config)
 					return;
 				end
 
+				local currentLayer = payload.body.currentLayer;
 				local invasions = payload.body.invasions;
 				local shouldCounterSync = (payload.body.shouldCounterSync ~= false);
 
@@ -79,82 +80,12 @@ function module:Initialize(config)
 					return;
 				end
 
-				config.onSync(sender, invasions, shouldCounterSync);
-			elseif (payload.type == "INVASION_SPAWNED") then
-				if (not payload.body) then
-					logger.debug("Received INVASION_SPAWNED message without body from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.layer) then
-					logger.debug("Received INVASION_SPAWNED message without layer from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.zone) then
-					logger.debug("Received INVASION_SPAWNED message without zone from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.when) then
-					logger.debug("Received INVASION_SPAWNED message without when from " .. sender);
-
-					return;
-				end
-
-				local layer = payload.body.layer;
-				local zone = payload.body.zone;
-				local when = payload.body.when;
-
-				config.onInvasionSpawned(sender, layer, zone, when);
-			elseif (payload.type == "INVASION_DESPAWNED") then
-				if (not payload.body) then
-					logger.debug("Received INVASION_DESPAWNED message without body from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.layer) then
-					logger.debug("Received INVASION_DESPAWNED message without layer from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.zone) then
-					logger.debug("Received INVASION_DESPAWNED message without zone from " .. sender);
-
-					return;
-				end
-
-				if (not payload.body.when) then
-					logger.debug("Received INVASION_DESPAWNED message without when from " .. sender);
-
-					return;
-				end
-
-				local layer = payload.body.layer;
-				local zone = payload.body.zone;
-				local when = payload.body.when;
-
-				config.onInvasionDespawned(sender, layer, zone, when);
+				config.onSync(sender, currentLayer, invasions, shouldCounterSync);
 			else
 				logger.warn("Unknown message type: " .. tostring(payload.type));
 			end
 		end
 	);
-end
-
-function module:GetPeers()
-	if (not communicator) then
-		logger.warn("Communicator not initialized");
-
-		return nil;
-	end
-
-	return communicator.peers;
 end
 
 function Communicate(target, channel, message)
@@ -188,58 +119,23 @@ function module:RequestSync()
 	Communicate(nil, "GUILD", message);
 end
 
-function module:Sync(target, invasions, shouldCounterSync)
+function module:Sync(target, currentLayer, invasions, shouldCounterSync)
 	logger.debug("IS SENDING SYNC TO " .. target);
 
 	local message = CreateMessage(
 		"SYNC",
 		{
+			currentLayer = currentLayer,
 			invasions = invasions,
 			shouldCounterSync = shouldCounterSync
 		}
 	);
 
-	Communicate(target, "WHISPER", message);
-end
+	if (target) then
+		Communicate(target, "WHISPER", message);
 
-function module:UpdateGuild(invasions)
-	local message = CreateMessage(
-		"SYNC",
-		{
-			invasions = invasions,
-			shouldCounterSync = false
-		}
-	);
-
-	Communicate(nil, "GUILD", message);
-end
-
-function module:AnnounceInvasionSpawned(layer, zone, when)
-	logger.debug("IS ANNOUNCING INVASION SPAWNED IN " .. zone .. " ON LAYER " .. tostring(layer));
-
-	local message = CreateMessage(
-		"INVASION_SPAWNED",
-		{
-			layer = layer,
-			zone = zone,
-			when = when
-		}
-	);
-
-	Communicate(nil, "GUILD", message);
-end
-
-function module:AnnounceInvasionDespawned(layer, zone, when)
-	logger.debug("IS ANNOUNCING INVASION DESPAWNED IN " .. zone .. " ON LAYER " .. tostring(layer));
-
-	local message = CreateMessage(
-		"INVASION_DESPAWNED",
-		{
-			layer = layer,
-			zone = zone,
-			when = when
-		}
-	);
+		return;
+	end
 
 	Communicate(nil, "GUILD", message);
 end

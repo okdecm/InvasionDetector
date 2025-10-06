@@ -11,6 +11,7 @@ local logging = addon.common.logging;
 local collections = addon.common.collections;
 local versioning = addon.common.versioning;
 local guild = addon.common.guild;
+local layers = addon.common.layers;
 
 local config = {
 	checkRate = 5,
@@ -18,6 +19,8 @@ local config = {
 	spawnCooldown = 10800, -- 3 hours
 	spawnWindow = 3600, -- 1 hour
 };
+
+local peers = {};
 
 local logger = logging:Create({
 	prefix = addonName .. " - ",
@@ -132,8 +135,13 @@ frame:SetScript(
 
 					sync:Sync(sender, InvasionDetectorDB.invasions, true);
 				end,
-				onSync = function(sender, invasions, shouldCounterSync)
+				onSync = function(sender, currentLayer, invasions, shouldCounterSync)
 					logger.debug("Received sync from " .. sender);
+
+					peers[sender] = {
+						lastSync = GetServerTime(),
+						layer = currentLayer
+					};
 
 					for layer, zones in pairs(invasions) do
 						InvasionDetectorDB.invasions[layer] = InvasionDetectorDB.invasions[layer] or {};
@@ -154,37 +162,15 @@ frame:SetScript(
 
 						sync:Sync(sender, InvasionDetectorDB.invasions, false);
 					end
-				end,
-				onInvasionSpawned = function(sender, layer, zone, when)
-					logger.debug("Received invasion spawned from " .. sender .. " for " .. zone .. " on layer " .. layer);
-
-					InvasionDetectorDB.invasions[layer] = InvasionDetectorDB.invasions[layer] or {};
-					InvasionDetectorDB.invasions[layer][zone] = {
-						status = "active",
-						lastSeen = when,
-						spawnedAt = when
-					};
-
-					OnInvasionSpawned(layer, zone);
-				end,
-				onInvasionDespawned = function(sender, layer, zone, when)
-					logger.debug("Received invasion despawned from " .. sender .. " for " .. zone .. " on layer " .. layer);
-
-					InvasionDetectorDB.invasions[layer] = InvasionDetectorDB.invasions[layer] or {};
-					InvasionDetectorDB.invasions[layer][zone] = {
-						status = "inactive",
-						lastSeen = when,
-						despawnedAt = when
-					};
-
-					OnInvasionDespawned(layer, zone);
 				end
 			});
 
 			C_Timer.NewTicker(
 				30,
 				function()
-					sync:UpdateGuild(InvasionDetectorDB.invasions);
+					local currentLayer = layers:GetCurrentLayer();
+
+					sync:Sync(nil, currentLayer, InvasionDetectorDB.invasions, false);
 				end
 			);
 		elseif(event == "PLAYER_ENTERING_WORLD") then
@@ -237,8 +223,8 @@ function OnTick(when, layer, seenInvasions)
 
 				InvasionDetectorDB.invasions[layer][zone].spawnedAt = when;
 
-				sync:AnnounceInvasionSpawned(layer, zone, when);
-				OnInvasionSpawned(layer, zone);
+				MaybeAnnounceToGuild("Invasion spawned - " .. zone .. " (layer " .. layer .. ")");
+				PlaySound(8459);
 			end
 		end
 	end
@@ -262,36 +248,42 @@ function OnTick(when, layer, seenInvasions)
 
 					InvasionDetectorDB.invasions[layer][zone].despawnedAt = existingInvasion.lastSeen;
 
-					sync:AnnounceInvasionDespawned(layer, zone, when);
-					OnInvasionDespawned(layer, zone);
+					MaybeAnnounceToGuild("Invasion despawned - " .. zone .. " (layer " .. layer .. ")");
 				end
 			end
 		end
 	end
 end
 
-function OnInvasionSpawned(layer, zone)
-	MaybeAnnounceToGuild("Invasion spawned - " .. zone .. " (layer " .. layer .. ")");
-	PlaySound(8459);
-end
-
-function OnInvasionDespawned(layer, zone)
-	MaybeAnnounceToGuild("Invasion despawned - " .. zone .. " (layer " .. layer .. ")");
-end
-
 function MaybeAnnounceToGuild(message)
-	local peers = sync:GetPeers();
+	logger.debug("Maybe announcing to guild: " .. message);
 
-	if (not peers) then
-		logger.debug("Unable to determine peers, skipping guild announcement");
+	if (not InvasionDetectorDB.profile.announcements) then
+		logger.debug("Announcements are disabled - skipping guild announcement");
 
 		return;
 	end
 
-	logger.debug("Maybe announcing to guild: " .. message);
+	local currentLayer = layers:GetCurrentLayer();
+
+	if (not currentLayer) then
+		logger.debug("Unable to determine current layer - skipping guild announcement");
+
+		return;
+	end
+
+	local activePeersOnSameLayer = collections:Filter(
+		peers,
+		function(peer)
+			local isOnSameLayer = (peer.layer == currentLayer);
+			local lastSeenRecently = (GetServerTime() - peer.lastSync) < 300;
+
+			return isOnSameLayer and lastSeenRecently;
+		end
+	);
 
 	guild:TryAnnounceToGuild(
-		peers,
+		activePeersOnSameLayer,
 		message
 	);
 end
@@ -330,6 +322,32 @@ function HideUI()
 	frame:Hide();
 end
 
+function ToggleMinimap()
+	if (InvasionDetectorDB.profile.minimap.hide) then
+		logger.info("Showing minimap icon");
+
+		LibDBIcon:Show(addonName);
+		InvasionDetectorDB.profile.minimap.hide = false;
+	else
+		logger.info("Hiding minimap icon");
+
+		LibDBIcon:Hide(addonName);
+		InvasionDetectorDB.profile.minimap.hide = true;
+	end
+end
+
+function ToggleAnnouncements()
+	if (not InvasionDetectorDB.profile.announcements) then
+		logger.info("Enabling announcements");
+
+		InvasionDetectorDB.profile.announcements = true;
+	else
+		logger.info("Disabling announcements");
+
+		InvasionDetectorDB.profile.announcements = false;
+	end
+end
+
 SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
 SLASH_INVASTIONDETECTOR2 = "/id";
 
@@ -340,32 +358,51 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 		-- MaybeAnnounceToGuild("Ignore this - testing if some code works");
 	end
 
-	if (argumentsString == "show") then
+	local arguments = strsplit(" ", argumentsString);
+
+	local command = arguments[1];
+
+	if (command == "show") then
 		ShowUI();
 
 		return;
 	end
 
-	if (argumentsString == "hide") then
+	if (command == "hide") then
 		HideUI();
 
 		return;
 	end
 
-	if (argumentsString == "clear") then
+	if (command == "clear") then
 		ClearInvasions();
 
 		return;
 	end
 
-	if (argumentsString == "prune") then
+	if (command == "prune") then
 		PruneInvasions();
+
+		return;
+	end
+
+	if (command == "minimap") then
+		ToggleMinimap();
+
+		return;
+	end
+
+	if (command == "announcements") then
+		ToggleAnnouncements();
 
 		return;
 	end
 
 	print("InvasionDetector (/id or /invasiondetector) commands:");
 	print("show - Show the main window");
-	print("reset - Reset the database");
+	print("hide - Hide the main window");
+	print("clear - Clear all invasions from the database");
 	print("prune - Prune stale invasions from the database");
+	print("minimap - Toggle the minimap icon");
+	print("announcements - Toggle announcements for spawns/despawns to guild");
 end

@@ -24,6 +24,12 @@ function module:Start(config)
 		updateTicker:Cancel();
 	end
 
+	if (IsInInstance()) then
+		logger.debug("Player is in an instance - not starting ticker");
+
+		return;
+	end
+
 	logger.debug("Starting new update ticker with rate " .. tostring(config.rate) .. " seconds");
 
 	updateTicker = C_Timer.NewTicker(
@@ -33,9 +39,8 @@ function module:Start(config)
 
 			logger.debug("Tick: " .. tostring(now));
 
-			local inInstance = IsInInstance();
-
-			if (inInstance) then
+			-- NOTE: Incase we call this during a transition into an instance
+			if (IsInInstance()) then
 				logger.debug("Player is in an instance - skipping tick");
 
 				return;

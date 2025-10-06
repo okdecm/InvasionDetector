@@ -4,20 +4,36 @@ local module = {};
 addon.common = addon.common or {};
 addon.common.collections = module;
 
-function module:Find(list, predicateFunction)
+function module:Filter(collection, predicateFunction)
 	if(type(predicateFunction) ~= "function") then
 		error("predicateFunction is not a function");
 	end
 
-	for key, value in pairs(list) do
+	local result = {};
+
+	for key, value in pairs(collection) do
+		if(predicateFunction(key, value)) then
+			result[key] = value;
+		end
+	end
+
+	return result;
+end
+
+function module:Find(collection, predicateFunction)
+	if(type(predicateFunction) ~= "function") then
+		error("predicateFunction is not a function");
+	end
+
+	for key, value in pairs(collection) do
 		if(predicateFunction(key, value)) then
 			return value;
 		end
 	end
 end
 
-function module:Contains(list, value)
-	for _, v in ipairs(list) do
+function module:Contains(collection, value)
+	for _, v in ipairs(collection) do
 		if(v == value) then
 			return true;
 		end
@@ -27,10 +43,10 @@ function module:Contains(list, value)
 end
 
 -- SEE: https://www.lua.org/pil/19.3.html
-function module:SortedPairs(_table, sortFunction)
+function module:SortedPairs(collection, sortFunction)
 	local clonedTable = {};
 
-	for n in pairs(_table) do
+	for n in pairs(collection) do
 		table.insert(clonedTable, n);
 	end
 
@@ -43,7 +59,7 @@ function module:SortedPairs(_table, sortFunction)
 		if (clonedTable[i] == nil) then
 			return nil;
 		else
-			return clonedTable[i], _table[clonedTable[i]];
+			return clonedTable[i], collection[clonedTable[i]];
 		end
 	end
 
