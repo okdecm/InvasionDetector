@@ -47,7 +47,7 @@ local addonLDB = LibDataBroker:NewDataObject(
 			GameTooltip:Hide();
 		end,
 		OnClick = function()
-			ShowUI();
+			ToggleUI();
 		end
 	}
 );
@@ -325,6 +325,14 @@ end
 
 function HideUI()
 	frame:Hide();
+end
+
+function ToggleUI()
+	if (frame:IsShown()) then
+		HideUI();
+	else
+		ShowUI();
+	end
 end
 
 function ToggleMinimap()
