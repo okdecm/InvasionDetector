@@ -13,6 +13,7 @@ local logger = logging:Create({
 });
 
 local communicator = nil;
+local hasBeenWarnedABoutOutOfDateAddon = false;
 
 function module:Initialize(config)
 	logger.debug("Initializing sync module");
@@ -54,7 +55,11 @@ function module:Initialize(config)
 			if (senderAddonVersionComparison > 0) then
 				logger.debug("Received message from " .. sender .. " with newer addon version");
 
-				logger.warn("Your addon is out of date. Please update to the latest version.");
+				if (not hasBeenWarnedABoutOutOfDateAddon) then
+					logger.warn("Your addon is out of date. Please update to the latest version.");
+
+					hasBeenWarnedABoutOutOfDateAddon = true;
+				end
 
 				return;
 			end
