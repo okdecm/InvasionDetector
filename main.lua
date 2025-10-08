@@ -134,7 +134,9 @@ frame:SetScript(
 				onSyncRequest = function(sender)
 					logger.debug("Received sync request from " .. sender);
 
-					sync:Sync(sender, InvasionDetectorDB.invasions, true);
+					local currentLayer = layers:GetCurrentLayer();
+
+					sync:Sync(sender, currentLayer, InvasionDetectorDB.invasions, true);
 				end,
 				onSync = function(sender, currentLayer, invasions, shouldCounterSync)
 					logger.debug("Received sync from " .. sender);
@@ -161,7 +163,9 @@ frame:SetScript(
 					if (shouldCounterSync) then
 						logger.debug("Countering sync from " .. sender);
 
-						sync:Sync(sender, InvasionDetectorDB.invasions, false);
+						local myCurrentLayer = layers:GetCurrentLayer();
+
+						sync:Sync(sender, myCurrentLayer, InvasionDetectorDB.invasions, false);
 					end
 				end
 			});
@@ -275,9 +279,9 @@ function MaybeAnnounceToGuild(message)
 
 	local activePeersOnSameLayer = collections:Filter(
 		peers,
-		function(peer)
-			local isOnSameLayer = (peer.layer == currentLayer);
-			local lastSeenRecently = (GetServerTime() - peer.lastSync) < 300;
+		function(name, info)
+			local isOnSameLayer = (info.layer == currentLayer);
+			local lastSeenRecently = (GetServerTime() - info.lastSync) < 300;
 
 			return isOnSameLayer and lastSeenRecently;
 		end
@@ -355,15 +359,19 @@ SLASH_INVASTIONDETECTOR2 = "/id";
 SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 	-- print("InvasionDetector slash command received arguments: " .. tostring(argumentsString));
 
-	if (argumentsString == "test") then
-		-- MaybeAnnounceToGuild("Ignore this - testing if some code works");
-	end
-
 	local arguments = {
 		strsplit(" ", argumentsString)
 	};
 
 	local command = arguments[1];
+
+	-- if (command == "test") then
+		-- logger.debug("Testing");
+
+		-- MaybeAnnounceToGuild("Ignore this - testing if some code works");
+
+		-- return;
+	-- end
 
 	if (command == "show") then
 		ShowUI();
