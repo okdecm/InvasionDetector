@@ -6,6 +6,7 @@ local LibDBIcon = LibStub("LibDBIcon-1.0");
 local ui = addon.ui;
 local sync = addon.sync;
 local checker = addon.checker;
+local config = addon.config;
 
 local logging = addon.common.logging;
 local collections = addon.common.collections;
@@ -13,7 +14,7 @@ local versioning = addon.common.versioning;
 local guild = addon.common.guild;
 local layers = addon.common.layers;
 
-local config = {
+local invasionConfig = {
 	checkRate = 5,
 
 	spawnCooldown = 10800, -- 3 hours
@@ -39,14 +40,21 @@ local addonLDB = LibDataBroker:NewDataObject(
 
 			GameTooltip:ClearLines();
 			GameTooltip:AddLine("Invasion Detector");
-			GameTooltip:AddLine("Left click to open the main window.", 0.6, 0.6, 0.6, true);
+			GameTooltip:AddDoubleLine("Left click", "open/close the main window.", 0, 1, 0.6, 0.6, 0.6, 0.6);
+			GameTooltip:AddDoubleLine("Right click", "open the configuration window.", 0, 1, 0.6, 0.6, 0.6, 0.6);
 
 			GameTooltip:Show();
 		end,
 		OnLeave = function()
 			GameTooltip:Hide();
 		end,
-		OnClick = function()
+		OnClick = function(self, button)
+			if (button == "RightButton") then
+				OpenConfig();
+
+				return;
+			end
+
 			ToggleUI();
 		end
 	}
@@ -112,7 +120,6 @@ frame:SetScript(
 				InvasionDetectorDB = {
 					addonVersion = addon.version,
 					profile = {
-						announcements = true,
 						minimap = {
 							hide = false
 						}
@@ -126,6 +133,8 @@ frame:SetScript(
 				addonLDB,
 				InvasionDetectorDB.profile.minimap
 			);
+
+			config:Initialize(InvasionDetectorDB.profile);
 
 			PruneInvasions();
 
@@ -228,7 +237,6 @@ function OnTick(when, layer, seenInvasions)
 
 				InvasionDetectorDB.invasions[layer][zone].spawnedAt = when;
 
-				MaybeAnnounceToGuild("Invasion spawned - " .. zone .. " (layer " .. layer .. ")");
 				PlaySound(8459);
 			end
 		end
@@ -252,45 +260,10 @@ function OnTick(when, layer, seenInvasions)
 					logger.debug("Invasion despawned in " .. zone .. " on layer " .. layer);
 
 					InvasionDetectorDB.invasions[layer][zone].despawnedAt = existingInvasion.lastSeen;
-
-					MaybeAnnounceToGuild("Invasion despawned - " .. zone .. " (layer " .. layer .. ")");
 				end
 			end
 		end
 	end
-end
-
-function MaybeAnnounceToGuild(message)
-	logger.debug("Maybe announcing to guild: " .. message);
-
-	if (not InvasionDetectorDB.profile.announcements) then
-		logger.debug("Announcements are disabled - skipping guild announcement");
-
-		return;
-	end
-
-	local currentLayer = layers:GetCurrentLayer();
-
-	if (not currentLayer) then
-		logger.debug("Unable to determine current layer - skipping guild announcement");
-
-		return;
-	end
-
-	local activePeersOnSameLayer = collections:Filter(
-		peers,
-		function(name, info)
-			local isOnSameLayer = (info.layer == currentLayer);
-			local lastSeenRecently = (GetServerTime() - info.lastSync) < 300;
-
-			return isOnSameLayer and lastSeenRecently;
-		end
-	);
-
-	guild:TryAnnounceToGuild(
-		activePeersOnSameLayer,
-		message
-	);
 end
 
 function ClearInvasions()
@@ -304,7 +277,7 @@ function PruneInvasions()
 		for zone, invasion in pairs(zones) do
 			local timeSinceLastSeen = now - invasion.lastSeen;
 
-			if (timeSinceLastSeen > (config.spawnCooldown + config.spawnWindow)) then
+			if (timeSinceLastSeen > (invasionConfig.spawnCooldown + invasionConfig.spawnWindow)) then
 				logger.debug("Pruning stale invasion on layer " .. layer .. " in zone " .. zone);
 
 				InvasionDetectorDB.invasions[layer][zone] = nil;
@@ -314,7 +287,7 @@ function PruneInvasions()
 end
 
 function UpdateUI()
-	ui:RenderInvasions(frame, InvasionDetectorDB.invasions, config.spawnCooldown, config.spawnWindow);
+	ui:RenderInvasions(frame, InvasionDetectorDB.invasions, invasionConfig.spawnCooldown, invasionConfig.spawnWindow);
 end
 
 function ShowUI()
@@ -333,6 +306,10 @@ function ToggleUI()
 	else
 		ShowUI();
 	end
+end
+
+function OpenConfig()
+	config:Open();
 end
 
 function ToggleMinimap()
@@ -373,13 +350,11 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 
 	local command = arguments[1];
 
-	-- if (command == "test") then
-		-- logger.debug("Testing");
+	if (command == "config") then
+		OpenConfig();
 
-		-- MaybeAnnounceToGuild("Ignore this - testing if some code works");
-
-		-- return;
-	-- end
+		return;
+	end
 
 	if (command == "show") then
 		ShowUI();
@@ -418,6 +393,7 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 	end
 
 	print("InvasionDetector (/id or /invasiondetector) commands:");
+	print("config - Open the configuration window");
 	print("show - Show the main window");
 	print("hide - Hide the main window");
 	print("clear - Clear all invasions from the database");
