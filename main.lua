@@ -33,7 +33,7 @@ local addonLDB = LibDataBroker:NewDataObject(
 	{
 		type = "data source",
 		text = "Invasion Detector",
-		icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01.png",
+		icon = "Interface\\Icons\\Spell_Shadow_AnimateDead.png",
 		OnEnter = function(self, button)
 			GameTooltip:SetOwner(self, "ANCHOR_NONE");
 			GameTooltip:SetPoint("TOPLEFT", self, "BOTTOMLEFT");

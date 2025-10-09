@@ -2,7 +2,7 @@
 ## Title: Invasion Detector
 ## Author: Dec Murphy (@OKDecM)
 ## Notes: Detect any invasion events and notify your guild
-## Version: 1.0.6
+## Version: 1.0.7
 ## Dependencies: NovaWorldBuffs
 ## SavedVariables: InvasionDetectorDB
 
