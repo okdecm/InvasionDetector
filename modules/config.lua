@@ -12,7 +12,7 @@ local logger = logging:Create({
 
 local settingsCategory = nil;
 
-function module:Initialize(config)
+function module:Initialize(config, options)
 	local frame = CreateFrame("Frame", addonName .. "Config", UIParent, "ResizeLayoutFrame");
 	frame:SetPoint("TOPLEFT");
 	frame.spacing = 10;
@@ -35,13 +35,15 @@ function module:Initialize(config)
 	body:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10);
 	body.spacing = 10;
 
-	local showMinimapButton = CreateCheckbox(
+	local showMinimapButton = module:CreateCheckbox(
 		body,
 		"Minimap",
 		"Show Minimap Button",
 		"Show the minimap button to quickly open the config",
 		function(self, checked)
 			config.minimap.hide = not checked;
+
+			options.onShowMinimapChanged();
 		end
 	);
 	showMinimapButton:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -10);
@@ -94,7 +96,7 @@ function module:Open()
 	Settings.OpenToCategory(settingsCategory.ID);
 end
 
-function CreateCheckbox(parent, id, label, description, onClick)
+function module:CreateCheckbox(parent, id, label, description, onClick)
 	local check = CreateFrame("CheckButton", parent:GetID() .. id .. "Checkbox", parent, "InterfaceOptionsCheckButtonTemplate");
 
 	check:SetScript(

@@ -93,7 +93,7 @@ function module:Initialize(config)
 	);
 end
 
-function Communicate(target, channel, message)
+function module:Communicate(target, channel, message)
 	if (not communicator) then
 		logger.error("Communicator not initialized");
 
@@ -106,7 +106,7 @@ function Communicate(target, channel, message)
 	communicator.send(channel, target, message);
 end
 
-function CreateMessage(type, body)
+function module:CreateMessage(type, body)
 	return {
 		addonVersion = addon.version,
 		type = type,
@@ -117,17 +117,17 @@ end
 function module:RequestSync()
 	logger.debug("IS REQUESTING SYNC FROM GUILD");
 
-	local message = CreateMessage(
+	local message = module:CreateMessage(
 		"SYNC_REQUEST"
 	);
 
-	Communicate(nil, "GUILD", message);
+	module:Communicate(nil, "GUILD", message);
 end
 
 function module:Sync(target, currentLayer, invasions, shouldCounterSync)
 	logger.debug("IS SENDING SYNC TO " .. target);
 
-	local message = CreateMessage(
+	local message = module:CreateMessage(
 		"SYNC",
 		{
 			currentLayer = currentLayer,
@@ -137,11 +137,11 @@ function module:Sync(target, currentLayer, invasions, shouldCounterSync)
 	);
 
 	if (target == "GUILD") then
-		Communicate(nil, "GUILD", message);
+		module:Communicate(nil, "GUILD", message);
 
 		return;
 	end
 
-	Communicate(target, "WHISPER", message);
+	module:Communicate(target, "WHISPER", message);
 
 end

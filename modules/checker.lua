@@ -54,7 +54,7 @@ function module:Start(config)
 				return;
 			end
 
-			local invasions = FindInvasions();
+			local invasions = module:FindInvasions();
 
 			config.onTick(now, layer, invasions);
 
@@ -67,7 +67,7 @@ function module:Start(config)
 	);
 end
 
-function FindInvasions()
+function module:FindInvasions()
 	logger.debug("Finding invasions");
 
 	local azerothMapID = 947;

@@ -3,8 +3,6 @@ local addonName, addon = ...;
 local module = {};
 addon.ui = module;
 
-local layers = addon.common.layers;
-
 function module:Create(id)
 	local frame = CreateFrame("Frame", id, UIParent);
 
@@ -143,9 +141,9 @@ function module:RenderInvasions(frame, invasions, spawnCooldown, spawnWindow)
 				if (invasion.spawnedAt) then
 					local timeSinceSpawn = now - invasion.spawnedAt;
 
-					zoneFrame.detail:SetText("Spawned " .. SecondsToClock(timeSinceSpawn) .. " ago / Last seen " .. SecondsToClock(timeSinceLastSeen) .. " ago");
+					zoneFrame.detail:SetText("Spawned " .. module:SecondsToClock(timeSinceSpawn) .. " ago / Last seen " .. module:SecondsToClock(timeSinceLastSeen) .. " ago");
 				else
-					zoneFrame.detail:SetText("Last seen " .. SecondsToClock(timeSinceLastSeen) .. " ago");
+					zoneFrame.detail:SetText("Last seen " .. module:SecondsToClock(timeSinceLastSeen) .. " ago");
 				end
 
 				zoneFrame.detail:SetTextColor(1, 1, 1, 1);
@@ -159,12 +157,12 @@ function module:RenderInvasions(frame, invasions, spawnCooldown, spawnWindow)
 					if (timeSinceDespawn < spawnCooldown) then
 						local cooldown = spawnCooldown - timeSinceDespawn;
 
-						zoneFrame.detail:SetText("On cooldown for " .. SecondsToClock(cooldown));
+						zoneFrame.detail:SetText("On cooldown for " .. module:SecondsToClock(cooldown));
 						zoneFrame.detail:SetTextColor(0.6, 1, 0.6, 1);
 					else
 						local window = (spawnWindow - (timeSinceDespawn - spawnCooldown));
 
-						zoneFrame.detail:SetText("Spawn within " .. SecondsToClock(window));
+						zoneFrame.detail:SetText("Spawn within " .. module:SecondsToClock(window));
 						zoneFrame.detail:SetTextColor(1, 1, 0.6, 1);
 					end
 				else
@@ -188,7 +186,7 @@ function module:RenderInvasions(frame, invasions, spawnCooldown, spawnWindow)
 	end
 end
 
-function SecondsToClock(totalSeconds)
+function module:SecondsToClock(totalSeconds)
 	local oneMinuteInSeconds = 60;
 
 	if (totalSeconds < oneMinuteInSeconds) then

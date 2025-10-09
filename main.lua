@@ -11,8 +11,9 @@ local config = addon.config;
 local logging = addon.common.logging;
 local collections = addon.common.collections;
 local versioning = addon.common.versioning;
-local guild = addon.common.guild;
 local layers = addon.common.layers;
+
+local module = {};
 
 local invasionConfig = {
 	checkRate = 5,
@@ -34,7 +35,7 @@ local addonLDB = LibDataBroker:NewDataObject(
 		type = "data source",
 		text = "Invasion Detector",
 		icon = "Interface\\Icons\\Spell_Shadow_AnimateDead.png",
-		OnEnter = function(self, button)
+		OnEnter = function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_NONE");
 			GameTooltip:SetPoint("TOPLEFT", self, "BOTTOMLEFT");
 
@@ -50,12 +51,12 @@ local addonLDB = LibDataBroker:NewDataObject(
 		end,
 		OnClick = function(self, button)
 			if (button == "RightButton") then
-				OpenConfig();
+				module:OpenConfig();
 
 				return;
 			end
 
-			ToggleUI();
+			module:ToggleUI();
 		end
 	}
 );
@@ -76,7 +77,7 @@ frame:SetScript(
 		frameUpdateTicker = C_Timer.NewTicker(
 			1,
 			function()
-				UpdateUI();
+				module:UpdateUI();
 			end
 		);
 	end
@@ -134,9 +135,22 @@ frame:SetScript(
 				InvasionDetectorDB.profile.minimap
 			);
 
-			config:Initialize(InvasionDetectorDB.profile);
+			config:Initialize(
+				InvasionDetectorDB.profile,
+				{
+					onShowMinimapChanged = function()
+						if (InvasionDetectorDB.profile.minimap.hide) then
+							module:HideMinimapIcon();
 
-			PruneInvasions();
+							return;
+						end
+
+						module:ShowMinimapIcon();
+					end
+				}
+			);
+
+			module:PruneInvasions();
 
 			sync:Initialize({
 				prefix = "Dec_ID-" .. semanticVersion.major,
@@ -198,8 +212,10 @@ frame:SetScript(
 				5,
 				function()
 					checker:Start({
-						rate = 5,
-						onTick = OnTick
+						rate = invasionConfig.checkRate,
+						onTick = function(when, layer, seenInvasions)
+							module:OnTick(when, layer, seenInvasions);
+						end
 					});
 				end
 			);
@@ -209,8 +225,8 @@ frame:SetScript(
 	end
 );
 
-function OnTick(when, layer, seenInvasions)
-	PruneInvasions();
+function module:OnTick(when, layer, seenInvasions)
+	module:PruneInvasions();
 
 	local lastUpdatedOnTheSameLayer = (checker.lastUpdated and checker.lastUpdated.layer == layer);
 
@@ -266,11 +282,11 @@ function OnTick(when, layer, seenInvasions)
 	end
 end
 
-function ClearInvasions()
+function module:ClearInvasions()
 	InvasionDetectorDB.invasions = {};
 end
 
-function PruneInvasions()
+function module:PruneInvasions()
 	local now = GetServerTime();
 
 	for layer, zones in pairs(InvasionDetectorDB.invasions) do
@@ -286,56 +302,54 @@ function PruneInvasions()
 	end
 end
 
-function UpdateUI()
+function module:UpdateUI()
 	ui:RenderInvasions(frame, InvasionDetectorDB.invasions, invasionConfig.spawnCooldown, invasionConfig.spawnWindow);
 end
 
-function ShowUI()
-	UpdateUI();
+function module:ShowUI()
+	module:UpdateUI();
 
 	frame:Show();
 end
 
-function HideUI()
+function module:HideUI()
 	frame:Hide();
 end
 
-function ToggleUI()
+function module:ToggleUI()
 	if (frame:IsShown()) then
-		HideUI();
+		module:HideUI();
 	else
-		ShowUI();
+		module:ShowUI();
 	end
 end
 
-function OpenConfig()
+function module:OpenConfig()
 	config:Open();
 end
 
-function ToggleMinimap()
+function module:ToggleMinimapIcon()
 	if (InvasionDetectorDB.profile.minimap.hide) then
-		logger.info("Showing minimap icon");
+		module:ShowMinimapIcon();
 
-		LibDBIcon:Show(addonName);
-		InvasionDetectorDB.profile.minimap.hide = false;
-	else
-		logger.info("Hiding minimap icon");
-
-		LibDBIcon:Hide(addonName);
-		InvasionDetectorDB.profile.minimap.hide = true;
+		return;
 	end
+
+	module:HideMinimapIcon();
 end
 
-function ToggleAnnouncements()
-	if (not InvasionDetectorDB.profile.announcements) then
-		logger.info("Enabling announcements");
+function module:ShowMinimapIcon()
+	logger.info("Showing minimap icon");
 
-		InvasionDetectorDB.profile.announcements = true;
-	else
-		logger.info("Disabling announcements");
+	LibDBIcon:Show(addonName);
+	InvasionDetectorDB.profile.minimap.hide = false;
+end
 
-		InvasionDetectorDB.profile.announcements = false;
-	end
+function module:HideMinimapIcon()
+	logger.info("Hiding minimap icon");
+
+	LibDBIcon:Hide(addonName);
+	InvasionDetectorDB.profile.minimap.hide = true;
 end
 
 SLASH_INVASTIONDETECTOR1 = "/invasiondetector";
@@ -350,44 +364,44 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 
 	local command = arguments[1];
 
+	if (command == "test") then
+		DevTools_Dump(InvasionDetectorDB);
+
+		return;
+	end
+
 	if (command == "config") then
-		OpenConfig();
+		module:OpenConfig();
 
 		return;
 	end
 
 	if (command == "show") then
-		ShowUI();
+		module:ShowUI();
 
 		return;
 	end
 
 	if (command == "hide") then
-		HideUI();
+		module:HideUI();
 
 		return;
 	end
 
 	if (command == "clear") then
-		ClearInvasions();
+		module:ClearInvasions();
 
 		return;
 	end
 
 	if (command == "prune") then
-		PruneInvasions();
+		module:PruneInvasions();
 
 		return;
 	end
 
 	if (command == "minimap") then
-		ToggleMinimap();
-
-		return;
-	end
-
-	if (command == "announcements") then
-		ToggleAnnouncements();
+		module:ToggleMinimapIcon();
 
 		return;
 	end
@@ -399,5 +413,4 @@ SlashCmdList["INVASTIONDETECTOR"] = function(argumentsString, editBox)
 	print("clear - Clear all invasions from the database");
 	print("prune - Prune stale invasions from the database");
 	print("minimap - Toggle the minimap icon");
-	print("announcements - Toggle announcements for spawns/despawns to guild");
 end
